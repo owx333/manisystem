@@ -7,6 +7,107 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<!-- ====== FIREBASE ====== -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCQ9wGA6mSUxk38unlhZirAjQ_gLylGz7I",
+  authDomain: "awara-a8a89.firebaseapp.com",
+  projectId: "awara-a8a89",
+  storageBucket: "awara-a8a89.firebasestorage.app",
+  messagingSenderId: "710757319807",
+  appId: "1:710757319807:web:067c96d78351a76b06ab4a"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const auth = getAuth(fbApp);
+const db = getFirestore(fbApp);
+
+// ---- Auth helpers ----
+window._fbLogin = async (email, password) => {
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+    const nameId = email.split('@')[0].toLowerCase();
+    const profile = (typeof SEED_USERS !== 'undefined' ? SEED_USERS : []).find(u => u.id === nameId);
+    if (!profile) return { ok: false, error: `Profile untuk "${nameId}" tidak dijumpai. Hubungi Wilson.` };
+    return { ok: true, user: { ...profile } };
+  } catch(e) {
+    let msg = 'Login gagal';
+    if (['auth/wrong-password','auth/invalid-credential','auth/invalid-login-credentials'].includes(e.code)) msg = 'Password salah';
+    else if (e.code === 'auth/user-not-found') msg = 'Email tidak dijumpai. Hubungi Wilson.';
+    else if (e.code === 'auth/too-many-requests') msg = 'Terlalu banyak percubaan. Cuba lagi sebentar.';
+    else msg = 'Login error: ' + e.code;
+    return { ok: false, error: msg };
+  }
+};
+
+window._fbLogout = () => signOut(auth).catch(() => {});
+
+window._fbGetCurrentUser = () => new Promise(resolve => {
+  const unsub = onAuthStateChanged(auth, fbUser => {
+    unsub();
+    if (!fbUser) { resolve(null); return; }
+    const nameId = fbUser.email.split('@')[0].toLowerCase();
+    const profile = (typeof SEED_USERS !== 'undefined' ? SEED_USERS : []).find(u => u.id === nameId);
+    resolve(profile ? { ...profile } : null);
+  });
+});
+
+// ---- Data helpers ----
+window._fbLoadAll = async () => {
+  try {
+    const [casesSnap, actsSnap, metaNotesSnap, metaSeenSnap] = await Promise.all([
+      getDocs(collection(db, 'cases')),
+      getDocs(collection(db, 'activities')),
+      getDoc(doc(db, '_meta', 'notes')).catch(() => null),
+      getDoc(doc(db, '_meta', 'seen')).catch(() => null),
+    ]);
+    return {
+      cases: casesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+             .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)),
+      activities: actsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+      customer_notes: (metaNotesSnap && metaNotesSnap.exists()) ? metaNotesSnap.data() : {},
+      seen: (metaSeenSnap && metaSeenSnap.exists()) ? metaSeenSnap.data() : {},
+    };
+  } catch(e) {
+    console.error('Firestore load error:', e);
+    return { cases: [], activities: [], customer_notes: {}, seen: {} };
+  }
+};
+
+window._fbSetCase = (id, data) =>
+  setDoc(doc(db, 'cases', id), data).catch(e => console.error('Case write fail:', e));
+
+window._fbUpdateCase = (id, updates) =>
+  updateDoc(doc(db, 'cases', id), updates).catch(e => console.error('Case update fail:', e));
+
+window._fbUpdateActivity = (csId, date, updates) => {
+  const actId = csId + '_' + date;
+  setDoc(doc(db, 'activities', actId), { cs_id: csId, date, ...updates }, { merge: true })
+    .catch(e => console.error('Activity write fail:', e));
+};
+
+window._fbSetNote = (key, note) => {
+  const data = {};
+  data[key] = note || null;
+  setDoc(doc(db, '_meta', 'notes'), data, { merge: true })
+    .catch(e => console.error('Note write fail:', e));
+};
+
+window._fbMarkSeen = (userId, key) => {
+  const data = {};
+  data[userId + '_' + key] = Date.now();
+  setDoc(doc(db, '_meta', 'seen'), data, { merge: true })
+    .catch(e => console.error('Seen write fail:', e));
+};
+
+window._fbReady = true;
+console.log('✅ Firebase connected');
+</script>
 <style>
 :root {
   --primary: #0F5132; --primary-light: #1B6B43; --primary-dark: #084025;
@@ -673,173 +774,167 @@ function generateSeedActivities() {
   ];
 }
 
-// ==================== DATA LAYER (localStorage) ====================
+// ==================== DATA LAYER (Firestore-backed, in-memory cache) ====================
+let CACHE = {
+  users: [...SEED_USERS], // User profiles come from SEED_USERS (roles/teams fixed in code)
+  cases: [],
+  activities: [],
+  customer_notes: {},
+  seen: {},
+  session: null
+};
+
 const DB = {
-  K: { 
-    users: 'awara_users', cases: 'awara_cases', activities: 'awara_activities', 
-    session: 'awara_session', customer_notes: 'awara_customer_notes',
-    seen: 'awara_seen'
-  },
+  K: { users: 'awara_users', cases: 'awara_cases', activities: 'awara_activities', session: 'awara_session', customer_notes: 'awara_customer_notes', seen: 'awara_seen' },
   
-  get(key, def = []) {
-    try { return JSON.parse(localStorage.getItem(key)) ?? def; } catch { return def; }
+  // Load all live data from Firestore into cache
+  async loadAll() {
+    if (!window._fbLoadAll) return;
+    const data = await window._fbLoadAll();
+    CACHE.cases = data.cases;
+    CACHE.activities = data.activities;
+    CACHE.customer_notes = data.customer_notes;
+    // Seen uses flattened keys: "userId_key"
+    const rawSeen = data.seen || {};
+    const seen = {};
+    Object.entries(rawSeen).forEach(([k, v]) => {
+      const parts = k.split('_');
+      if (parts.length >= 2) {
+        const uid = parts[0];
+        const key = parts.slice(1).join('_');
+        if (!seen[uid]) seen[uid] = {};
+        seen[uid][key] = v;
+      }
+    });
+    CACHE.seen = seen;
   },
-  set(key, val) {
-    try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch { return false; }
-  },
-  
-  seed(force = false) {
-    if (!force && this.get(this.K.users).length > 0) return;
-    this.set(this.K.users, SEED_USERS);
-    this.set(this.K.cases, generateSeedCases());
-    this.set(this.K.activities, generateSeedActivities());
-    this.set(this.K.customer_notes, {});
-    this.set(this.K.seen, {});
-  },
-  
-  // Users
-  users() { return this.get(this.K.users); },
-  user(id) { return this.users().find(u => u.id === id); },
+
+  // ---- Users (from SEED_USERS, not Firestore) ----
+  users() { return CACHE.users; },
+  user(id) { return CACHE.users.find(u => u.id === id); },
   updateUser(id, updates) {
-    const users = this.users();
-    const idx = users.findIndex(u => u.id === id);
+    const idx = CACHE.users.findIndex(u => u.id === id);
     if (idx === -1) return null;
-    users[idx] = { ...users[idx], ...updates };
-    this.set(this.K.users, users);
-    return users[idx];
+    CACHE.users[idx] = { ...CACHE.users[idx], ...updates };
+    return CACHE.users[idx];
   },
-  
-  // Cases
-  cases() { return this.get(this.K.cases); },
-  caseById(id) { return this.cases().find(c => c.id === id); },
-  
-  // Find cases by IC (for duplicate check + customer history)
+
+  // ---- Cases ----
+  cases() { return CACHE.cases; },
+  caseById(id) { return CACHE.cases.find(c => c.id === id); },
   casesByIC(ic) {
     if (!ic) return [];
     const cleanIC = ic.replace(/[-\s]/g, '').toLowerCase();
-    return this.cases().filter(c => 
-      c.ic && c.ic.replace(/[-\s]/g, '').toLowerCase() === cleanIC
-    );
+    return CACHE.cases.filter(c => c.ic && c.ic.replace(/[-\s]/g, '').toLowerCase() === cleanIC);
   },
-  
   addCase(data) {
-    const cases = this.cases();
     const user = Auth.current();
-    const newCase = { 
-      id: 'c' + Date.now(), 
-      ...data,
-      audit_log: [{
-        date: new Date().toISOString(),
-        by: user?.id || 'system',
-        action: 'created',
-        changes: { status: { from: null, to: data.status || 'new' } }
-      }]
+    const id = 'c' + Date.now() + Math.random().toString(36).substr(2, 5);
+    const newCase = {
+      id, ...data, createdAt: Date.now(),
+      audit_log: [{ date: new Date().toISOString(), by: user?.id || 'system', action: 'created', changes: { status: { from: null, to: data.status || 'new' } } }]
     };
-    cases.unshift(newCase);
-    this.set(this.K.cases, cases);
+    CACHE.cases.unshift(newCase);
+    if (window._fbSetCase) window._fbSetCase(id, newCase);
     return newCase;
   },
-  
   updateCase(id, updates) {
-    const cases = this.cases();
-    const idx = cases.findIndex(c => c.id === id);
+    const idx = CACHE.cases.findIndex(c => c.id === id);
     if (idx === -1) return null;
-    const before = cases[idx];
+    const before = CACHE.cases[idx];
     const user = Auth.current();
-    
-    // Build audit entry for actually changed fields (skip large/timestamp fields)
     const skipFields = ['audit_log', 'remarks'];
     const changes = {};
     Object.keys(updates).forEach(k => {
       if (skipFields.includes(k)) return;
-      if (JSON.stringify(before[k]) !== JSON.stringify(updates[k])) {
-        changes[k] = { from: before[k], to: updates[k] };
-      }
+      if (JSON.stringify(before[k]) !== JSON.stringify(updates[k])) changes[k] = { from: before[k], to: updates[k] };
     });
-    
     if (Object.keys(changes).length > 0) {
       const audit = before.audit_log || [];
-      audit.push({
-        date: new Date().toISOString(),
-        by: user?.id || 'system',
-        action: 'updated',
-        changes
-      });
+      audit.push({ date: new Date().toISOString(), by: user?.id || 'system', action: 'updated', changes });
       updates.audit_log = audit;
     }
-    
-    cases[idx] = { ...before, ...updates };
-    this.set(this.K.cases, cases);
-    return cases[idx];
+    CACHE.cases[idx] = { ...before, ...updates };
+    if (window._fbUpdateCase) window._fbUpdateCase(id, updates);
+    return CACHE.cases[idx];
   },
-  
-  // Activities (daily targets)
-  activities() { return this.get(this.K.activities); },
+
+  // ---- Activities ----
+  activities() { return CACHE.activities; },
   todayActivity(csId) {
-    const today = new Date().toISOString().slice(0,10);
-    return this.activities().find(a => a.cs_id === csId && a.date === today) || 
-           { cs_id: csId, date: today, calls: 0, whatsapp: 0, payslip: 0 };
+    const today = new Date().toISOString().slice(0, 10);
+    return CACHE.activities.find(a => a.cs_id === csId && a.date === today) ||
+      { cs_id: csId, date: today, calls: 0, whatsapp: 0, payslip: 0 };
   },
   updateActivity(csId, updates) {
-    const today = new Date().toISOString().slice(0,10);
-    const acts = this.activities();
-    const idx = acts.findIndex(a => a.cs_id === csId && a.date === today);
+    const today = new Date().toISOString().slice(0, 10);
+    const idx = CACHE.activities.findIndex(a => a.cs_id === csId && a.date === today);
     if (idx >= 0) {
-      acts[idx] = { ...acts[idx], ...updates };
+      CACHE.activities[idx] = { ...CACHE.activities[idx], ...updates };
     } else {
-      acts.push({ cs_id: csId, date: today, calls: 0, whatsapp: 0, payslip: 0, ...updates });
+      CACHE.activities.push({ cs_id: csId, date: today, calls: 0, whatsapp: 0, payslip: 0, ...updates });
     }
-    this.set(this.K.activities, acts);
+    if (window._fbUpdateActivity) window._fbUpdateActivity(csId, today, updates);
   },
-  
-  // Customer-level notes (keyed by IC, persists across cases)
-  customerNotes() { return this.get(this.K.customer_notes, {}); },
+
+  // ---- Customer Notes ----
+  customerNotes() { return CACHE.customer_notes; },
   customerNote(ic) {
     if (!ic) return '';
-    const key = ic.replace(/[-\s]/g, '').toLowerCase();
-    return this.customerNotes()[key] || '';
+    return CACHE.customer_notes[ic.replace(/[-\s]/g, '').toLowerCase()] || '';
   },
   setCustomerNote(ic, note) {
     if (!ic) return;
     const key = ic.replace(/[-\s]/g, '').toLowerCase();
-    const notes = this.customerNotes();
-    if (note) notes[key] = note;
-    else delete notes[key];
-    this.set(this.K.customer_notes, notes);
+    if (note) CACHE.customer_notes[key] = note;
+    else delete CACHE.customer_notes[key];
+    if (window._fbSetNote) window._fbSetNote(key, note);
   },
-  
-  // Tracking what user has seen (for notification badges)
-  seen() { return this.get(this.K.seen, {}); },
+
+  // ---- Seen (notification tracking) ----
+  seen() { return CACHE.seen; },
   markSeen(userId, key) {
-    const seen = this.seen();
-    if (!seen[userId]) seen[userId] = {};
-    seen[userId][key] = Date.now();
-    this.set(this.K.seen, seen);
+    if (!CACHE.seen[userId]) CACHE.seen[userId] = {};
+    CACHE.seen[userId][key] = Date.now();
+    if (window._fbMarkSeen) window._fbMarkSeen(userId, key);
   },
-  lastSeen(userId, key) {
-    return this.seen()[userId]?.[key] || 0;
+  lastSeen(userId, key) { return CACHE.seen[userId]?.[key] || 0; },
+
+  // ---- Session (in-memory only) ----
+  session() { return CACHE.session; },
+  setSession(userId) { CACHE.session = { userId, loginAt: Date.now() }; },
+  clearSession() { CACHE.session = null; },
+
+  // Legacy compatibility (used in a few places)
+  set(key, val) {
+    if (key === this.K.users || key === 'awara_users') CACHE.users = val;
   },
-  
-  // Session
-  session() { return this.get(this.K.session, null); },
-  setSession(userId) { this.set(this.K.session, { userId, loginAt: Date.now() }); },
-  clearSession() { localStorage.removeItem(this.K.session); }
+  get(key, def = []) {
+    if (key === this.K.users) return CACHE.users;
+    if (key === this.K.cases) return CACHE.cases;
+    if (key === this.K.activities) return CACHE.activities;
+    return def;
+  }
 };
 
-// ==================== AUTH ====================
+// ==================== AUTH (Firebase-backed) ====================
 const Auth = {
-  login(nameId, password) {
-    const user = DB.users().find(u => u.id === nameId.toLowerCase() || u.name.toLowerCase() === nameId.toLowerCase());
-    if (!user) return { ok: false, error: 'Name ID tidak dijumpai' };
-    if (user.password !== password) return { ok: false, error: 'Password salah' };
-    DB.setSession(user.id);
-    return { ok: true, user };
+  _user: null,
+
+  async doFirebaseLogin(nameId, password) {
+    if (!window._fbLogin) return { ok: false, error: 'Firebase tidak ready. Refresh page.' };
+    const email = nameId.toLowerCase().trim() + '@awara.local';
+    return window._fbLogin(email, password);
   },
-  logout() { DB.clearSession(); },
-  current() {
-    const s = DB.session();
-    return s ? DB.user(s.userId) : null;
-  }
+
+  logout() {
+    this._user = null;
+    CACHE.session = null;
+    if (window._fbLogout) window._fbLogout();
+  },
+
+  current() { return this._user; },
+  setUser(u) { this._user = u; CACHE.session = u ? { userId: u.id, loginAt: Date.now() } : null; }
 };
 
 // ==================== BUSINESS LOGIC ====================
@@ -1373,36 +1468,9 @@ const App = {
   },
   
   renderPersonaBar() {
+    // Production: no demo persona switcher
     const bar = document.getElementById('persona-bar');
-    const cur = Auth.current();
-    const showcase = ['anis', 'faizah', 'atirah', 'wilson'];
-    bar.innerHTML = '<span class="lbl">Demo · Login as</span>' + 
-      showcase.map(id => {
-        const u = DB.user(id);
-        const active = cur && cur.id === id ? 'active' : '';
-        return `<button class="${active}" onclick="App.demoSwitch('${id}')">${u.name} · ${u.role}</button>`;
-      }).join('') + 
-      `<button onclick="App.resetDemo()" style="background: rgba(245, 197, 24, 0.2); color: var(--accent-light);">↻ Reset</button>` +
-      (cur ? `<button onclick="App.logout()">Logout</button>` : '');
-  },
-  
-  resetDemo() {
-    if (!confirm('Reset all demo data? (Cases, activities, sessions akan reset balik)')) return;
-    localStorage.removeItem(DB.K.users);
-    localStorage.removeItem(DB.K.cases);
-    localStorage.removeItem(DB.K.activities);
-    localStorage.removeItem(DB.K.session);
-    DB.seed(true);
-    DB.setSession('anis');
-    this.state.currentScreen = 'login';
-    this.render();
-    toast('✓ Demo data reset');
-  },
-  
-  demoSwitch(userId) {
-    DB.setSession(userId);
-    this.state.currentScreen = 'login';  // Will be redirected to default
-    this.render();
+    if (bar) bar.innerHTML = '';
   },
   
   logout() {
@@ -1423,18 +1491,18 @@ const App = {
         <form class="login-form" onsubmit="event.preventDefault(); App.doLogin();">
           <div class="input-group">
             <label>Name ID</label>
-            <input type="text" id="login-name" placeholder="e.g. ANIS" style="text-transform: uppercase;" autocomplete="off">
+            <input type="text" id="login-name" placeholder="e.g. ANIS" style="text-transform: uppercase;" autocomplete="off" autocapitalize="characters">
           </div>
           <div class="input-group">
             <label>Password</label>
-            <input type="password" id="login-pass" placeholder="••••••••" value="1234">
+            <input type="password" id="login-pass" placeholder="••••••••">
           </div>
-          <button type="submit" class="login-btn">Sign In</button>
+          <button type="submit" class="login-btn" id="login-btn">Sign In</button>
           <div class="login-error" id="login-error"></div>
         </form>
         <div class="login-footer">
           AWARA Sdn Bhd · Penang Malaysia<br>
-          Demo: ANIS / FAIZAH / WILSON · password: 1234
+          Masukkan Name ID dan password anda
         </div>
       </section>
     `;
@@ -1444,17 +1512,41 @@ const App = {
     document.getElementById('login-name')?.focus();
   },
   
-  doLogin() {
+  async doLogin() {
     const name = document.getElementById('login-name').value.trim();
     const pass = document.getElementById('login-pass').value;
     const err = document.getElementById('login-error');
-    const result = Auth.login(name, pass);
+    const btn = document.getElementById('login-btn');
+    
+    if (!name || !pass) {
+      err.textContent = 'Sila masukkan Name ID dan Password';
+      err.classList.add('show');
+      return;
+    }
+    
+    btn.textContent = 'Signing in...';
+    btn.disabled = true;
+    err.classList.remove('show');
+    
+    const result = await Auth.doFirebaseLogin(name, pass);
+    
+    btn.textContent = 'Sign In';
+    btn.disabled = false;
+    
     if (!result.ok) {
       err.textContent = result.error;
       err.classList.add('show');
       return;
     }
-    err.classList.remove('show');
+    
+    // Load all shared data from Firestore
+    btn.textContent = 'Loading data...';
+    btn.disabled = true;
+    await DB.loadAll();
+    btn.textContent = 'Sign In';
+    btn.disabled = false;
+    
+    Auth.setUser(result.user);
     this.state.currentScreen = this.defaultScreen(result.user);
     this.render();
   },
@@ -3536,9 +3628,8 @@ const App = {
         </select>
       </div>
       
-      <div class="form-group">
-        <label>Reset Password (optional · leave blank to keep)</label>
-        <input type="text" id="eu-pass" placeholder="••••••••">
+      <div style="background: var(--info-bg); border-radius: 10px; padding: 10px 12px; font-size: 11px; color: var(--info); margin-bottom: 12px;">
+        ℹ️ Untuk reset password, pergi ke Firebase Console → Authentication → Users
       </div>
       
       <button class="submit-btn" onclick="App.saveUser('${userId}')">Save Changes</button>
@@ -3551,14 +3642,12 @@ const App = {
     const name = document.getElementById('eu-name').value.trim();
     const role = document.querySelector('#eu-role .case-type-pill.active').dataset.val;
     const leaderId = document.getElementById('eu-leader').value;
-    const pass = document.getElementById('eu-pass').value;
     
     if (!name) { toast('Name required'); return; }
     if (role === 'cs' && !leaderId) { toast('Pilih Team Leader untuk CS'); return; }
     
     const updates = { name, role };
     updates.leader_id = role === 'cs' ? leaderId : null;
-    if (pass) updates.password = pass;
     
     DB.updateUser(userId, updates);
     hideModal();
@@ -3568,8 +3657,7 @@ const App = {
   
   deleteUser(userId) {
     if (!confirm('Delete this staff? (Cases linked to them will keep their name)')) return;
-    const users = DB.users().filter(u => u.id !== userId);
-    DB.set(DB.K.users, users);
+    CACHE.users = CACHE.users.filter(u => u.id !== userId);
     hideModal();
     toast('Staff deleted');
     this.render();
@@ -3608,9 +3696,8 @@ const App = {
         </select>
       </div>
       
-      <div class="form-group">
-        <label>Initial Password</label>
-        <input type="text" id="nu-pass" value="1234" placeholder="Default: 1234">
+      <div style="background: var(--warning-bg); border-radius: 10px; padding: 10px 12px; font-size: 11px; color: var(--warning); margin-bottom: 12px;">
+        ⚠️ Selepas create, tambah email + password di Firebase Console → Authentication → Users
       </div>
       
       <button class="submit-btn" onclick="App.createUser()">Create Staff</button>
@@ -3639,15 +3726,10 @@ const App = {
     if (DB.user(id)) { toast('Login ID "' + id.toUpperCase() + '" already exists'); return; }
     if (role === 'cs' && !leaderId) { toast('Pilih Team Leader untuk CS'); return; }
     
-    const users = DB.users();
-    users.push({ 
-      id, name, role, 
-      leader_id: role === 'cs' ? leaderId : null, 
-      password: pass 
-    });
-    DB.set(DB.K.users, users);
+    const newUser = { id, name, role, leader_id: role === 'cs' ? leaderId : null };
+    CACHE.users.push(newUser);
     hideModal();
-    toast('Staff "' + name + '" created · Login: ' + id.toUpperCase());
+    toast('Staff "' + name + '" created · Login ID: ' + id.toUpperCase() + ' (Tambah di Firebase Auth juga)');
     this.render();
   },
   
@@ -4012,51 +4094,35 @@ const App = {
 };
 
 // ==================== INIT ====================
-const SCHEMA_VERSION = '5.0';
-
-window.addEventListener('DOMContentLoaded', () => {
-  // Auto-migrate: if old schema detected, reset
-  const ver = localStorage.getItem('awara_schema_version');
-  if (ver !== SCHEMA_VERSION) {
-    localStorage.removeItem(DB.K.users);
-    localStorage.removeItem(DB.K.cases);
-    localStorage.removeItem(DB.K.activities);
-    localStorage.removeItem(DB.K.session);
-    localStorage.setItem('awara_schema_version', SCHEMA_VERSION);
+window.addEventListener('DOMContentLoaded', async () => {
+  // Clear any old localStorage data
+  ['awara_schema_version','awara_users','awara_cases','awara_activities','awara_session','awara_customer_notes','awara_seen'].forEach(k => localStorage.removeItem(k));
+  
+  const app = document.getElementById('app');
+  
+  // Show loading screen while Firebase auth initialises
+  app.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:16px;background:linear-gradient(160deg,#084025 0%,#0F5132 60%,#1B6B43 100%);">
+      <div style="font-family:'Archivo Black',sans-serif;font-size:56px;color:#F5C518;letter-spacing:0.02em;">AWARA</div>
+      <div style="font-size:11px;color:rgba(250,247,240,0.6);letter-spacing:0.25em;text-transform:uppercase;">Loading...</div>
+    </div>
+  `;
+  
+  // Wait a tick to ensure the Firebase module script has initialised
+  await new Promise(r => setTimeout(r, 200));
+  
+  // Check if user is already logged in (Firebase persists sessions)
+  const user = window._fbGetCurrentUser ? await window._fbGetCurrentUser() : null;
+  
+  if (user) {
+    Auth.setUser(user);
+    await DB.loadAll();
+    App.state.currentScreen = App.defaultScreen(user);
   }
   
-  DB.seed();
-  // Auto-login as Anis for demo if no session
-  if (!Auth.current()) {
-    DB.setSession('anis');
-  }
   App.render();
 });
 </script>
 
 </body>
 </html>
-
-<script type="module">
-
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyCQ9wGA6mSUxk38unlhZirAjQ_gLylGz7I",
-  authDomain: "awara-a8a89.firebaseapp.com",
-  projectId: "awara-a8a89",
-  storageBucket: "awara-a8a89.firebasestorage.app",
-  messagingSenderId: "710757319807",
-  appId: "1:710757319807:web:067c96d78351a76b06ab4a"
-};
-
-const app = initializeApp(firebaseConfig);
-
-const auth = getAuth(app);
-const db = getFirestore(app);
-
-console.log("Firebase Connected ✅");
-
-</script>
