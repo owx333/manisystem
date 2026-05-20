@@ -27,6 +27,25 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--cream); c
 .serif { font-family: 'Fraunces', serif; }
 .hidden { display: none !important; }
 
+<!-- ====== FIREBASE ====== -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCQ9wGA6mSUxk38unlhZirAjQ_gLylGz7I",
+  authDomain: "awara-a8a89.firebaseapp.com",
+  projectId: "awara-a8a89",
+  storageBucket: "awara-a8a89.firebasestorage.app",
+  messagingSenderId: "710757319807",
+  appId: "1:710757319807:web:067c96d78351a76b06ab4a"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const auth = getAuth(fbApp);
+const db = getFirestore(fbApp);
+
 /* Persona switcher (demo only - remove when going production) */
 .persona-bar { position: sticky; top: 0; z-index: 100; background: var(--primary-dark); color: var(--cream); padding: 8px 12px; display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; font-size: 11px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
 .persona-bar::-webkit-scrollbar { display: none; }
