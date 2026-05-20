@@ -4039,12 +4039,10 @@ window.addEventListener('DOMContentLoaded', () => {
 
 <script type="module">
 
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyCQ9wGA6mSUxk38unlhZirAjQ_gLylGz7I",
   authDomain: "awara-a8a89.firebaseapp.com",
@@ -4054,9 +4052,11 @@ const firebaseConfig = {
   appId: "1:710757319807:web:067c96d78351a76b06ab4a"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-console.log("Firebase Connected");
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+console.log("Firebase Connected ✅");
 
 </script>
