@@ -2738,9 +2738,8 @@ const App = {
       </div>
       
       <div class="form-group">
-        <label>Bulanan (RM) · auto-calc, but you can override manually</label>
+        <label>Bulanan (RM) </label>
         <input type="number" id="pc-bulanan-input" value="${c.bulanan ? Math.round(c.bulanan * 100) / 100 : ''}" min="0" step="0.01" inputmode="decimal" placeholder="auto-calc atau manual">
-        <div id="pc-bulanan-hint" style="font-size: 11px; color: var(--ink-3); margin-top: 4px;">Click <a onclick="App.recalcBulanan(true)" style="color: var(--primary); text-decoration: underline; cursor: pointer;">Re-calc auto</a> dari rate × tenor</div>
       </div>
       
       <div class="form-group">
@@ -2775,11 +2774,7 @@ const App = {
     const bulananInput = document.getElementById('pc-bulanan-input');
     if (!bulananInput) return;
     
-    // Only auto-fill if user clicked the link OR field is empty
-    if (forceAuto || !bulananInput.value || parseFloat(bulananInput.value) === 0) {
-      if (pkg && amt > 0 && tenor > 0) {
-        const auto = calcBulanan(amt, pkg.rate, tenor);
-        bulananInput.value = Math.round(auto * 100) / 100;
+
       }
     }
   },
@@ -2796,10 +2791,6 @@ const App = {
     if (amt <= 0) { toast('Loan amount kena > 0'); return; }
     if (tenor <= 0) { toast('Tenor kena > 0'); return; }
     
-    // Auto-fill bulanan if blank
-    const pkg = LOAN_PACKAGES.find(p => p.id === pkgId);
-    if (bulanan === 0 && pkg) {
-      bulanan = calcBulanan(amt, pkg.rate, tenor);
     }
     
     const c = DB.caseById(caseId);
