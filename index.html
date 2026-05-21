@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>AWARA Sdn Bhd · CS Management System</title>
+<title>AWARA Sdn Bhd · GOAL MANAGEMENT SYSTEM</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%230F5132'/%3E%3Ccircle cx='50' cy='50' r='36' fill='none' stroke='%23F5C518' stroke-width='4'/%3E%3Ccircle cx='50' cy='50' r='24' fill='none' stroke='%23F5C518' stroke-width='4'/%3E%3Ccircle cx='50' cy='50' r='12' fill='%23F5C518'/%3E%3Cline x1='15' y1='50' x2='85' y2='50' stroke='%23F5C518' stroke-width='2'/%3E%3Cline x1='50' y1='15' x2='50' y2='85' stroke='%23F5C518' stroke-width='2'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -36,12 +37,9 @@ window.__firebaseStatus = { stage: 'loading', error: null };
     const fbDb = firebase.firestore();
     window.__firebaseStatus.stage = 'firestore-initialized';
     
-    // Persistence - fire and forget
-    fbDb.enablePersistence({ synchronizeTabs: false }).then(() => {
-      console.log("Firebase offline persistence enabled");
-    }).catch(e => {
-      console.log("Persistence skipped:", e.code || e.message);
-    });
+    // Note: We don't enable IndexedDB persistence to avoid deprecation warnings and
+    // version-conflict issues. App is online-first; localStorage cache handles offline reads.
+    // Future: use firebase.firestore().settings({ cache: ... }) for cleaner persistence.
     
     // ========== Cloud API ==========
     window.Cloud = {
@@ -162,6 +160,13 @@ window.__firebaseStatus = { stage: 'loading', error: null };
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { overscroll-behavior: none; }
 body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--cream); color: var(--ink); min-height: 100vh; line-height: 1.5; -webkit-font-smoothing: antialiased; font-size: 15px; }
+body.login-mode { background: var(--primary-dark); }
+body.login-mode #app { background: transparent; }
+/* Before JS runs, default to login background to prevent flash */
+body:not(.app-ready) { background: var(--primary-dark); }
+body:not(.app-ready) #app { opacity: 0; }
+body.app-ready { transition: background 0.2s; }
+body.app-ready #app { opacity: 1; transition: opacity 0.2s; }
 .serif { font-family: 'Fraunces', serif; }
 .hidden { display: none !important; }
 
@@ -871,7 +876,53 @@ function calcGajiBersih(pendapatan, potongan) {
   return { bersih, pct };
 }
 
-const ROLE_LABELS = { admin: 'Admin', leader: 'Team Leader', solo: 'Solo Leader', cs: 'CS' };
+// NOTE: 'admin' role is internally treated as Boss (full power). Display label = 'Boss'.
+//       New 'manager' role added between Boss and Leader.
+const ROLE_LABELS = { 
+  admin: 'Boss', 
+  manager: 'Manager',
+  leader: 'Team Leader', 
+  solo: 'Solo Leader', 
+  cs: 'CS' 
+};
+
+// ============ PERMISSIONS MATRIX ============
+// Centralized permission checks. Use everywhere instead of hardcoded role checks.
+const Permissions = {
+  // Can DELETE customer data, settings, users — Boss only
+  canDelete: u => u?.role === 'admin',
+  
+  // Can see Ranking screens (monthly leaderboard, awards, etc.) — Boss + Manager only
+  canSeeRanking: u => u?.role === 'admin' || u?.role === 'manager',
+  
+  // Can EDIT customer info (Stage 1 fields like name/IC/phone/salary) — Boss + Manager + Leader + Solo
+  // CS can only edit their own freshly-created cases (handled by case-level logic)
+  canEditCustomerInfo: u => ['admin', 'manager', 'leader', 'solo'].includes(u?.role),
+  
+  // Can edit ANY case (Stage 2, status updates) regardless of who owns it — Boss + Manager + Leader (their team) + Solo (their own)
+  canEditAllCases: u => ['admin', 'manager'].includes(u?.role),
+  
+  // Can manage Staff (add/edit/delete users) — Boss + Manager (no delete for Manager)
+  canManageStaff: u => ['admin', 'manager'].includes(u?.role),
+  
+  // Can manage Koperasi packages — Boss + Manager
+  canManageKoperasi: u => ['admin', 'manager'].includes(u?.role),
+  
+  // Can change System Settings (commission tiers etc.) — Boss only
+  canEditSettings: u => u?.role === 'admin',
+  
+  // Can post Announcements — Boss + Manager
+  canAnnounce: u => ['admin', 'manager'].includes(u?.role),
+  
+  // Can export reports — Boss + Manager
+  canExport: u => ['admin', 'manager'].includes(u?.role),
+  
+  // Does the user have an admin-like dashboard? — Boss + Manager (Manager = Boss minus delete)
+  isAdminLevel: u => ['admin', 'manager'].includes(u?.role),
+  
+  // Can see all cases across teams (not just own/team) — Boss + Manager
+  canSeeAllCases: u => ['admin', 'manager'].includes(u?.role)
+};
 
 // ==================== USERS (14 staff + 1 admin) ====================
 // Roles: admin, leader (has team), solo (solo leader, no team), cs
@@ -1507,14 +1558,16 @@ const Logic = {
     const disbursed = disburseCases.filter(c => !c.is_duplicate).length;
     const rejected = rejectCases.filter(c => !c.is_duplicate).length;
     const newCount = validPayslip.filter(c => c.status === 'new').length;
-    const inProgress = validPayslip.filter(c => ['contacted', 'proposed'].includes(c.status)).length;
+    const inProgress = validPayslip.filter(c => ['contacted', 'proposed', 'submitted', 'approved'].includes(c.status)).length;
+    // Pipeline = all ACTIVE cases (not disbursed, not rejected) - the user can see what's "in flight"
+    const inPipeline = validPayslip.filter(c => !['disbursed', 'rejected'].includes(c.status)).length;
     const pending = this.pendingCases({ csId }).filter(c => !c.is_duplicate).length;
     const disburseAmount = disburseCases.filter(c => !c.is_duplicate).reduce((s,c) => s + (c.disburse_amount || 0), 0);
     const lostAmount = rejectCases.filter(c => !c.is_duplicate).reduce((s,c) => s + (c.loan_amount || 0), 0);
     
     return { 
       total, totalDuplicates,
-      submitted, inProgress, disbursed, rejected, newCount, pending,
+      submitted, inProgress, inPipeline, disbursed, rejected, newCount, pending,
       disburseAmount, lostAmount, 
       cases: payslipCases,
       allCases: this.allCases({ csId })
@@ -1839,8 +1892,8 @@ const Logic = {
   // Notification counts (computed live, no persistent state)
   notificationCount(user) {
     let count = 0;
-    if (user.role === 'admin') {
-      // Admin: count of new payslip in last 24h, pending cases needing review
+    if (Permissions.isAdminLevel(user)) {
+      // Admin/Manager: count of new payslip in last 24h, pending cases needing review
       const recentCutoff = Date.now() - 24 * 60 * 60 * 1000;
       const newCases = DB.cases().filter(c => 
         c.status === 'new' && new Date(c.date_payslip).getTime() > recentCutoff
@@ -1916,6 +1969,7 @@ const App = {
   render() {
     const user = Auth.current();
     const app = document.getElementById('app');
+    document.body.classList.add('app-ready');  // signals first render done
     
     if (!user) {
       this.state.currentScreen = 'login';
@@ -1960,7 +2014,7 @@ const App = {
   },
   
   defaultScreen(user) {
-    if (user.role === 'admin') return 'admin-dashboard';
+    if (Permissions.isAdminLevel(user)) return 'admin-dashboard';
     if (Logic.isLeaderRole(user)) return 'leader-dashboard';
     return 'cs-dashboard';
   },
@@ -2024,7 +2078,7 @@ const App = {
         <div class="login-header">
           <div class="login-awara">AWARA</div>
           <div class="login-tagline">Sdn Bhd · Penang</div>
-          <div class="login-sub">CS Management System</div>
+          <div class="login-sub">GOAL MANAGEMENT SYSTEM</div>
         </div>
         <form class="login-form" onsubmit="event.preventDefault(); App.doLogin();">
           <div class="input-group">
@@ -2068,7 +2122,8 @@ const App = {
   topBar(user, title, subtitle) {
     const teamLeader = user.role === 'cs' ? DB.user(user.leader_id) : null;
     let roleTag = '';
-    if (user.role === 'admin') roleTag = 'ADMIN · ALL TEAMS';
+    if (user.role === 'admin') roleTag = 'BOSS · ALL ACCESS';
+    else if (user.role === 'manager') roleTag = 'MANAGER · ALL ACCESS';
     else if (user.role === 'solo') roleTag = `SOLO LEADER · ${user.name.toUpperCase()}`;
     else if (user.role === 'leader') roleTag = `TEAM LEADER · ${user.name.toUpperCase()}`;
     else roleTag = `CS · TEAM ${teamLeader ? teamLeader.name.toUpperCase() : '—'}`;
@@ -2144,8 +2199,8 @@ const App = {
         </div>
         <div class="kpi-card">
           <div class="label">In Pipeline</div>
-          <div class="value">${stats.submitted + stats.inProgress}</div>
-          <div class="sub">leader processing</div>
+          <div class="value">${stats.inPipeline}</div>
+          <div class="sub">all active cases (excl. disbursed & rejected)</div>
         </div>
         <div class="kpi-card lost" style="grid-column: span 2;">
           <div class="label">Rejected</div>
@@ -2193,7 +2248,7 @@ const App = {
   
   editTarget(field) {
     const user = Auth.current();
-    if (user.role === 'admin') return;
+    if (Permissions.isAdminLevel(user)) return;
     const current = DB.todayActivity(user.id)[field];
     const label = field === 'whatsapp' ? 'WhatsApp messages' : field === 'calls' ? 'Phone calls' : 'Payslip collected';
     showModal(`
@@ -2353,10 +2408,19 @@ const App = {
     const csUser = DB.user(c.source_cs_id);
     const leader = DB.user(c.leader_id);
     const user = Auth.current();
-    const canEdit = user.role === 'admin' || user.id === c.leader_id || (Logic.isLeaderRole(user) && user.id === c.source_cs_id);
-    const canProcessStage2 = canEdit && (Logic.isLeaderRole(user) || user.role === 'admin');
+    // Edit permissions:
+    // - Boss/Manager: any case
+    // - Leader/Solo: their team's cases (their CS, themselves)
+    // - CS: only their own cases
+    const isAdminLike = Permissions.isAdminLevel(user);
+    const isMyTeamCase = user.id === c.leader_id || c.source_cs_id === user.id;
+    const isMyCs = Logic.isLeaderRole(user) && (user.id === c.leader_id || DB.user(c.source_cs_id)?.leader_id === user.id);
+    
+    const canEdit = isAdminLike || isMyTeamCase || isMyCs;
+    const canProcessStage2 = canEdit && (Logic.isLeaderRole(user) || isAdminLike);
+    const canEditCustomerInfo = Permissions.canEditCustomerInfo(user);  // Leader/Solo/Manager/Boss
+    const canDelete = Permissions.canDelete(user);  // Boss only
     const stage2Done = c.package_id !== null;
-    const isAdmin = user.role === 'admin';
     
     const remarksHtml = (c.remarks || []).length === 0 ? '<div style="font-size:12px; color: var(--ink-3); font-style: italic; padding: 4px;">No remarks yet.</div>' :
       (c.remarks || []).map(r => `
@@ -2454,8 +2518,8 @@ const App = {
         <button class="btn-secondary" onclick="App.openProcessCase('${c.id}')">Edit Stage 2 Details</button>
       ` : ''}
       
-      ${isAdmin ? `
-        <button class="btn-secondary" style="background: var(--accent); color: var(--primary-dark); border: none; font-weight: 800;" onclick="App.openEditCustomer('${c.id}')">Edit Customer Info (Admin)</button>
+      ${canEditCustomerInfo ? `
+        <button class="btn-secondary" style="background: var(--accent); color: var(--primary-dark); border: none; font-weight: 800;" onclick="App.openEditCustomer('${c.id}')">✏️ Edit Customer Info</button>
       ` : ''}
       
       ${c.ic ? `
@@ -2466,8 +2530,38 @@ const App = {
         <button class="btn-secondary" onclick="App.viewAuditLog('${c.id}')" style="margin-top: 8px;">View Audit Log (${(c.audit_log || []).length} changes)</button>
       ` : ''}
       
+      ${canDelete ? `
+        <button class="btn-secondary" style="background: #FEE; color: var(--danger); border: 1px solid var(--danger); font-weight: 800; margin-top: 14px;" onclick="App.deleteCase('${c.id}')">🗑 Delete Customer (Boss Only · Permanent)</button>
+      ` : ''}
+      
       <button class="btn-secondary" onclick="hideModal()">Close</button>
     `);
+  },
+  
+  // Boss-only: delete a case permanently from local + Firestore
+  deleteCase(caseId) {
+    const c = DB.caseById(caseId);
+    if (!c) return;
+    const user = Auth.current();
+    if (!Permissions.canDelete(user)) { toast('No permission to delete'); return; }
+    
+    const confirmText = `DELETE customer "${c.customer_name}" permanently?\n\nThis cannot be undone.`;
+    if (!confirm(confirmText)) return;
+    
+    // Remove from cases array
+    const cases = DB.cases().filter(x => x.id !== caseId);
+    DB.set(DB.K.cases, cases);
+    
+    // Delete from Firestore
+    if (window.Cloud?.connected) {
+      window.Cloud.deleteDoc('cases', caseId).then(ok => {
+        console.log(ok ? '✓ Case deleted from Firestore' : '✗ Failed to delete from Firestore');
+      });
+    }
+    
+    hideModal();
+    toast('Customer deleted ' + (window.Cloud?.connected ? '· synced ☁' : '· local only'));
+    this.render();
   },
   
   // ============ CUSTOMER HISTORY ============
@@ -2633,22 +2727,19 @@ const App = {
       
       <div class="form-row">
         <div class="form-group">
-          <label>Loan Amount</label>
-          <select id="pc-amt" onchange="App.recalcBulanan()">
-            ${LOAN_AMOUNTS.map(a => `<option value="${a}" ${c.loan_amount === a ? 'selected' : ''}>RM ${fmt(a)}</option>`).join('')}
-          </select>
+          <label>Loan Amount (RM) · manual</label>
+          <input type="number" id="pc-amt" value="${c.loan_amount || ''}" min="0" step="100" inputmode="numeric" placeholder="e.g. 50000" oninput="App.recalcBulanan()">
         </div>
         <div class="form-group">
-          <label>Tenor</label>
-          <select id="pc-tenor" onchange="App.recalcBulanan()">
-            ${TENORS.map(t => `<option value="${t.m}" ${c.tenor === t.m ? 'selected' : ''}>${t.l}</option>`).join('')}
-          </select>
+          <label>Tenor (months) · manual</label>
+          <input type="number" id="pc-tenor" value="${c.tenor || ''}" min="0" step="1" inputmode="numeric" placeholder="e.g. 84" oninput="App.recalcBulanan()">
         </div>
       </div>
       
       <div class="form-group">
-        <label>Bulanan (auto-calc)</label>
-        <div id="pc-bulanan" style="background: var(--primary); color: var(--accent); padding: 14px; border-radius: 12px; font-family: 'Fraunces', serif; font-size: 24px; font-weight: 600; text-align: center;">RM ${fmt(c.bulanan || 0)}</div>
+        <label>Bulanan (RM) · auto-calc, but you can override manually</label>
+        <input type="number" id="pc-bulanan-input" value="${c.bulanan ? Math.round(c.bulanan * 100) / 100 : ''}" min="0" step="0.01" inputmode="decimal" placeholder="auto-calc atau manual">
+        <div id="pc-bulanan-hint" style="font-size: 11px; color: var(--ink-3); margin-top: 4px;">Click <a onclick="App.recalcBulanan(true)" style="color: var(--primary); text-decoration: underline; cursor: pointer;">Re-calc auto</a> dari rate × tenor</div>
       </div>
       
       <div class="form-group">
@@ -2675,24 +2766,40 @@ const App = {
     }, 50);
   },
   
-  recalcBulanan() {
-    const pkgId = document.getElementById('pc-pkg').value;
-    const amt = parseInt(document.getElementById('pc-amt').value) || 0;
-    const tenor = parseInt(document.getElementById('pc-tenor').value) || 0;
+  recalcBulanan(forceAuto) {
+    const pkgId = document.getElementById('pc-pkg')?.value;
+    const amt = parseFloat(document.getElementById('pc-amt')?.value) || 0;
+    const tenor = parseInt(document.getElementById('pc-tenor')?.value) || 0;
     const pkg = LOAN_PACKAGES.find(p => p.id === pkgId);
-    if (!pkg) return;
-    const bulanan = calcBulanan(amt, pkg.rate, tenor);
-    document.getElementById('pc-bulanan').textContent = 'RM ' + fmt(bulanan);
+    const bulananInput = document.getElementById('pc-bulanan-input');
+    if (!bulananInput) return;
+    
+    // Only auto-fill if user clicked the link OR field is empty
+    if (forceAuto || !bulananInput.value || parseFloat(bulananInput.value) === 0) {
+      if (pkg && amt > 0 && tenor > 0) {
+        const auto = calcBulanan(amt, pkg.rate, tenor);
+        bulananInput.value = Math.round(auto * 100) / 100;
+      }
+    }
   },
   
   saveProcessCase(caseId) {
     const pkgId = document.getElementById('pc-pkg').value;
     if (!pkgId) { toast('Pilih pakej dulu'); return; }
-    const amt = parseInt(document.getElementById('pc-amt').value);
-    const tenor = parseInt(document.getElementById('pc-tenor').value);
+    const amt = parseFloat(document.getElementById('pc-amt').value) || 0;
+    const tenor = parseInt(document.getElementById('pc-tenor').value) || 0;
+    const bulananInput = document.getElementById('pc-bulanan-input');
+    let bulanan = parseFloat(bulananInput.value) || 0;
     const type = document.querySelector('#pc-type .case-type-pill.active')?.dataset.val || 'normal';
+    
+    if (amt <= 0) { toast('Loan amount kena > 0'); return; }
+    if (tenor <= 0) { toast('Tenor kena > 0'); return; }
+    
+    // Auto-fill bulanan if blank
     const pkg = LOAN_PACKAGES.find(p => p.id === pkgId);
-    const bulanan = calcBulanan(amt, pkg.rate, tenor);
+    if (bulanan === 0 && pkg) {
+      bulanan = calcBulanan(amt, pkg.rate, tenor);
+    }
     
     const c = DB.caseById(caseId);
     const updates = {
@@ -2704,11 +2811,6 @@ const App = {
     };
     
     const today = new Date().toISOString().slice(0,10);
-    // Filling Stage 2 = Proposing package = status moves to 'proposed'
-    // Status logic:
-    //   new → proposed (also auto-set date_contacted if missing)
-    //   contacted → proposed
-    //   proposed/later → keep current status (just editing loan details)
     if (c.status === 'new' || c.status === 'contacted') {
       updates.status = 'proposed';
       updates.date_proposed = today;
@@ -3440,26 +3542,39 @@ const App = {
   
   // ============ ADMIN RANKINGS ============
   renderAdminRankings(user) {
+    // Permission check: only Boss + Manager can see rankings
+    if (!Permissions.canSeeRanking(user)) {
+      return this.topBar(user, 'Access Denied') + `
+        <div style="padding: 60px 40px; text-align: center;">
+          <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
+          <div style="font-weight: 800; font-size: 18px; color: var(--ink); margin-bottom: 8px;">Tidak Ada Akses</div>
+          <div style="font-size: 13px; color: var(--ink-3); max-width: 320px; margin: 0 auto;">
+            Hanya Boss dan Manager boleh melihat Rankings. Sila hubungi admin if you need access.
+          </div>
+        </div>
+      `;
+    }
+    
     const tab = this.state.tabState.adminRank || 'cs';
     const csRank = Logic.csRanking();
     const teamRank = Logic.teamRanking();
     
-    return this.topBar(user, 'Rankings') + `
+    return this.topBar(user, 'Rankings', 'Click any row to see their customers') + `
       <div class="tabs">
         <button class="tab ${tab === 'cs' ? 'active' : ''}" onclick="App.setTab('adminRank','cs')">CS Ranking</button>
         <button class="tab ${tab === 'team' ? 'active' : ''}" onclick="App.setTab('adminRank','team')">Team Ranking</button>
       </div>
-      <div style="padding: 10px 20px; font-size: 11px; color: var(--ink-3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;">Sorted by ${tab === 'cs' ? 'Payslip' : 'KFI Disburse'}</div>
+      <div style="padding: 10px 20px; font-size: 11px; color: var(--ink-3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;">Sorted by ${tab === 'cs' ? 'Payslip' : 'KFI Disburse'} · click to see customers</div>
       
       ${tab === 'cs' ? csRank.map((r, i) => {
         const leader = Logic.isLeaderRole(r.user) ? r.user : DB.user(r.user.leader_id);
         const isSolo = r.user.role === 'solo';
         return `
-        <div class="ranking-card ${i === 0 ? 'gold' : ''}">
+        <div class="ranking-card ${i === 0 ? 'gold' : ''}" onclick="App.viewStaffCustomers('${r.user.id}')" style="cursor: pointer;" title="Click to see customers">
           <div class="rank-num">${i+1}</div>
           <div class="rank-info">
             <div class="rank-name">${r.user.name}${isSolo ? ' <span class="solo-badge">Solo</span>' : ''}</div>
-            <div class="rank-sub">${ROLE_LABELS[r.user.role]} · T.${leader.name}</div>
+            <div class="rank-sub">${ROLE_LABELS[r.user.role]} · T.${leader?.name || '—'} · 👆 tap to verify</div>
           </div>
           <div class="rank-stats">
             <div class="pri">${r.total}</div>
@@ -3469,11 +3584,11 @@ const App = {
         </div>
         `;
       }).join('') : teamRank.map((t, i) => `
-        <div class="ranking-card ${i === 0 ? 'gold' : ''}">
+        <div class="ranking-card ${i === 0 ? 'gold' : ''}" onclick="App.viewStaffCustomers('${t.user.id}')" style="cursor: pointer;" title="Click to see team customers">
           <div class="rank-num">${i+1}</div>
           <div class="rank-info">
             <div class="rank-name">Team ${t.user.name}${t.user.role === 'solo' ? ' <span class="solo-badge">Solo</span>' : ''}</div>
-            <div class="rank-sub">${[t.user.name, ...t.teamMembers.map(m => m.name)].join(' · ')}</div>
+            <div class="rank-sub">${[t.user.name, ...t.teamMembers.map(m => m.name)].join(' · ')} · 👆 tap</div>
           </div>
           <div class="rank-stats">
             <div class="big">RM ${fmtK(t.kfiAmount)}</div>
@@ -3482,6 +3597,14 @@ const App = {
         </div>
       `).join('')}
     `;
+  },
+  
+  // Click ranking → see customers belonging to that staff (for checking/verification)
+  viewStaffCustomers(staffId) {
+    const staff = DB.user(staffId);
+    if (!staff) return;
+    this.state.staffFilter = staffId;
+    this.goto('admin-customers');
   },
   
   setTab(key, value) {
@@ -3532,11 +3655,11 @@ const App = {
         <div class="form-row">
           <div class="form-group">
             <label>Jumlah Pendapatan (RM) *</label>
-            <input type="number" id="f-pendapatan" placeholder="3500" min="0" oninput="App.recalcGaji()">
+            <input type="number" id="f-pendapatan" placeholder="3500.00" min="0" step="0.01" inputmode="decimal" oninput="App.recalcGaji()">
           </div>
           <div class="form-group">
             <label>Jumlah Potongan (RM) *</label>
-            <input type="number" id="f-potongan" placeholder="800" min="0" oninput="App.recalcGaji()">
+            <input type="number" id="f-potongan" placeholder="800.00" min="0" step="0.01" inputmode="decimal" oninput="App.recalcGaji()">
           </div>
         </div>
         
@@ -3698,25 +3821,7 @@ const App = {
     const today = new Date().toISOString().slice(0,10);
     const activity = DB.todayActivity(user.id);
     
-    // Get last 7 days history
-    const acts = DB.activities().filter(a => a.cs_id === user.id);
-    const last7 = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dStr = d.toISOString().slice(0,10);
-      const a = acts.find(x => x.date === dStr);
-      last7.push({
-        date: dStr,
-        label: d.toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric' }),
-        calls: a?.calls || 0,
-        whatsapp: a?.whatsapp || 0,
-        payslip: a?.payslip || 0,
-        isToday: i === 0
-      });
-    }
-    
-    return this.topBar(user, 'Daily Report', 'Track activity harian') + `
+    return this.topBar(user, 'Daily Report', 'Track activity harian · saved permanently') + `
       <div class="targets-card">
         <div class="targets-title">Today · ${new Date().toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'short' })}</div>
         <div class="targets-grid">
@@ -3802,26 +3907,121 @@ const App = {
         </div>
       </div>
       
-      <div class="section-header"><div class="section-title">Last 7 Days</div></div>
-      <div style="padding: 0 20px;">
+      <div class="section-header"><div class="section-title">📅 Historical Daily Reports</div></div>
+      <div style="padding: 0 20px 16px;">
         <div style="background: var(--cream-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-2);">
-          <div style="display: grid; grid-template-columns: 60px 1fr 1fr 1fr; gap: 8px; font-size: 10px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; padding-bottom: 8px; border-bottom: 1px solid var(--border-2);">
-            <div>Day</div>
-            <div style="text-align: right;">Calls</div>
-            <div style="text-align: right;">WA</div>
-            <div style="text-align: right;">PS</div>
-          </div>
-          ${last7.map(d => `
-            <div style="display: grid; grid-template-columns: 60px 1fr 1fr 1fr; gap: 8px; font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--border-2); ${d.isToday ? 'background: rgba(245,197,24,0.08);' : ''}">
-              <div style="font-weight: 700; color: ${d.isToday ? 'var(--accent-deep)' : 'var(--primary)'};">${d.label}${d.isToday ? ' (Today)' : ''}</div>
-              <div style="text-align: right; color: ${d.calls >= DAILY_TARGETS.calls ? 'var(--success)' : 'var(--ink-2)'}; font-weight: 600;">${d.calls}</div>
-              <div style="text-align: right; color: ${d.whatsapp >= DAILY_TARGETS.whatsapp ? 'var(--success)' : 'var(--ink-2)'}; font-weight: 600;">${d.whatsapp}</div>
-              <div style="text-align: right; color: ${d.payslip >= DAILY_TARGETS.payslip ? 'var(--success)' : 'var(--ink-2)'}; font-weight: 600;">${d.payslip}</div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: end; margin-bottom: 12px;">
+            <div style="flex: 1; min-width: 130px;">
+              <label style="display: block; font-size: 10px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;">View Month</label>
+              <input type="month" id="dr-month" value="${this.state.dailyMonth || new Date().toISOString().slice(0,7)}" onchange="App.changeDailyMonth(this.value)" style="width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-2); font-family: inherit; font-size: 13px;">
             </div>
-          `).join('')}
+            <button onclick="App.exportDailyHistory('${user.id}')" style="background: var(--accent); color: var(--primary-dark); border: none; padding: 10px 14px; border-radius: 10px; font-family: inherit; font-weight: 800; font-size: 11px; cursor: pointer;">📊 Export CSV</button>
+          </div>
+          ${this.renderDailyHistoryTable(user)}
         </div>
       </div>
     `;
+  },
+  
+  changeDailyMonth(ym) {
+    this.state.dailyMonth = ym;
+    this.render();
+  },
+  
+  renderDailyHistoryTable(user) {
+    const ym = this.state.dailyMonth || new Date().toISOString().slice(0,7);
+    const [year, month] = ym.split('-').map(Number);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const acts = DB.activities().filter(a => a.cs_id === user.id);
+    const today = new Date().toISOString().slice(0,10);
+    
+    const days = [];
+    let totals = { calls: 0, whatsapp: 0, payslip: 0, hits: { c: 0, w: 0, p: 0 } };
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dStr = `${ym}-${String(day).padStart(2,'0')}`;
+      if (dStr > today) break;  // future days
+      const a = acts.find(x => x.date === dStr);
+      const d = new Date(dStr);
+      const c = a?.calls || 0, w = a?.whatsapp || 0, p = a?.payslip || 0;
+      totals.calls += c; totals.whatsapp += w; totals.payslip += p;
+      if (c >= DAILY_TARGETS.calls) totals.hits.c++;
+      if (w >= DAILY_TARGETS.whatsapp) totals.hits.w++;
+      if (p >= DAILY_TARGETS.payslip) totals.hits.p++;
+      days.push({
+        date: dStr,
+        label: `${day} ${d.toLocaleDateString('en-MY', { weekday: 'short' })}`,
+        calls: c, whatsapp: w, payslip: p,
+        isToday: dStr === today,
+        isWeekend: d.getDay() === 0 || d.getDay() === 6
+      });
+    }
+    
+    return `
+      <div style="display: grid; grid-template-columns: 80px 1fr 1fr 1fr; gap: 6px; font-size: 10px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; padding-bottom: 8px; border-bottom: 1px solid var(--border-2);">
+        <div>Day</div>
+        <div style="text-align: right;">Calls</div>
+        <div style="text-align: right;">WA</div>
+        <div style="text-align: right;">PS</div>
+      </div>
+      ${days.length === 0 ? '<div style="padding: 20px; text-align: center; color: var(--ink-3); font-size: 12px;">No data for this month yet.</div>' :
+        days.reverse().map(d => `
+          <div style="display: grid; grid-template-columns: 80px 1fr 1fr 1fr; gap: 6px; font-size: 12px; padding: 7px 0; border-bottom: 1px solid var(--border-2); ${d.isToday ? 'background: rgba(245,197,24,0.08);' : ''} ${d.isWeekend ? 'opacity: 0.6;' : ''}">
+            <div style="font-weight: 700; color: ${d.isToday ? 'var(--accent-deep)' : 'var(--primary)'}; font-size: 11px;">${d.label}${d.isToday ? ' ★' : ''}</div>
+            <div style="text-align: right; color: ${d.calls >= DAILY_TARGETS.calls ? 'var(--success)' : 'var(--ink-2)'}; font-weight: 600;">${d.calls}</div>
+            <div style="text-align: right; color: ${d.whatsapp >= DAILY_TARGETS.whatsapp ? 'var(--success)' : 'var(--ink-2)'}; font-weight: 600;">${d.whatsapp}</div>
+            <div style="text-align: right; color: ${d.payslip >= DAILY_TARGETS.payslip ? 'var(--success)' : 'var(--ink-2)'}; font-weight: 600;">${d.payslip}</div>
+          </div>
+        `).join('')
+      }
+      ${days.length > 0 ? `
+        <div style="display: grid; grid-template-columns: 80px 1fr 1fr 1fr; gap: 6px; font-size: 12px; padding: 12px 0 4px; border-top: 2px solid var(--primary); margin-top: 4px;">
+          <div style="font-weight: 800; color: var(--primary); font-size: 11px;">TOTAL</div>
+          <div style="text-align: right; color: var(--primary); font-weight: 800;">${totals.calls}</div>
+          <div style="text-align: right; color: var(--primary); font-weight: 800;">${totals.whatsapp}</div>
+          <div style="text-align: right; color: var(--primary); font-weight: 800;">${totals.payslip}</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 80px 1fr 1fr 1fr; gap: 6px; font-size: 10px; padding: 4px 0; color: var(--ink-3);">
+          <div style="font-weight: 700;">Targets Hit</div>
+          <div style="text-align: right; font-weight: 700; color: ${totals.hits.c > 0 ? 'var(--success)' : 'var(--ink-3)'};">${totals.hits.c}/${days.length}</div>
+          <div style="text-align: right; font-weight: 700; color: ${totals.hits.w > 0 ? 'var(--success)' : 'var(--ink-3)'};">${totals.hits.w}/${days.length}</div>
+          <div style="text-align: right; font-weight: 700; color: ${totals.hits.p > 0 ? 'var(--success)' : 'var(--ink-3)'};">${totals.hits.p}/${days.length}</div>
+        </div>
+      ` : ''}
+    `;
+  },
+  
+  exportDailyHistory(userId) {
+    const ym = this.state.dailyMonth || new Date().toISOString().slice(0,7);
+    const [year, month] = ym.split('-').map(Number);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const acts = DB.activities().filter(a => a.cs_id === userId);
+    const user = DB.user(userId);
+    
+    const rows = [['Date','Day','Calls','WhatsApp','Payslip','Calls Target Hit','WA Target Hit','PS Target Hit']];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dStr = `${ym}-${String(day).padStart(2,'0')}`;
+      const a = acts.find(x => x.date === dStr);
+      const d = new Date(dStr);
+      const c = a?.calls || 0, w = a?.whatsapp || 0, p = a?.payslip || 0;
+      rows.push([
+        dStr,
+        d.toLocaleDateString('en-MY', { weekday: 'long' }),
+        c, w, p,
+        c >= DAILY_TARGETS.calls ? 'YES' : 'NO',
+        w >= DAILY_TARGETS.whatsapp ? 'YES' : 'NO',
+        p >= DAILY_TARGETS.payslip ? 'YES' : 'NO'
+      ]);
+    }
+    
+    const csv = '\uFEFF' + rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${user.name}_DailyReport_${ym}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Daily report exported');
   },
   
   editActivity(field) {
@@ -3879,20 +4079,44 @@ const App = {
     const filterStatus = this.state.filterState.adminCust || 'all';
     const filterTeam = this.state.filterState.adminCustTeam || 'all';
     const filterTime = this.state.filterState.adminCustTime || 'month';
+    const filterStaff = this.state.staffFilter || '';
+    const dateFrom = this.state.dateFrom || '';
+    const dateTo = this.state.dateTo || '';
     const searchText = (this.state.searchText || '').toLowerCase();
     
     let cases = DB.cases();
     
-    // Time filter
-    if (filterTime === 'month') {
-      const ym = new Date().toISOString().slice(0,7);
-      cases = cases.filter(c => c.date_payslip && c.date_payslip.startsWith(ym));
-    } else if (filterTime === '3months') {
-      const cutoff = new Date();
-      cutoff.setMonth(cutoff.getMonth() - 3);
-      cases = cases.filter(c => c.date_payslip && new Date(c.date_payslip) >= cutoff);
+    // Staff filter (from clicking ranking row)
+    if (filterStaff) {
+      const staff = DB.user(filterStaff);
+      if (staff) {
+        if (Logic.isLeaderRole(staff)) {
+          cases = cases.filter(c => c.leader_id === staff.id || c.source_cs_id === staff.id);
+        } else {
+          cases = cases.filter(c => c.source_cs_id === staff.id);
+        }
+      }
     }
-    // 'all' = no time filter
+    
+    // Date range filter (if both provided, takes precedence over Time chip)
+    if (dateFrom && dateTo) {
+      cases = cases.filter(c => c.date_payslip >= dateFrom && c.date_payslip <= dateTo);
+    } else if (dateFrom) {
+      cases = cases.filter(c => c.date_payslip >= dateFrom);
+    } else if (dateTo) {
+      cases = cases.filter(c => c.date_payslip <= dateTo);
+    } else {
+      // Time filter chip (only if no date range)
+      if (filterTime === 'month') {
+        const ym = new Date().toISOString().slice(0,7);
+        cases = cases.filter(c => c.date_payslip && c.date_payslip.startsWith(ym));
+      } else if (filterTime === '3months') {
+        const cutoff = new Date();
+        cutoff.setMonth(cutoff.getMonth() - 3);
+        cases = cases.filter(c => c.date_payslip && new Date(c.date_payslip) >= cutoff);
+      }
+      // 'all' = no filter
+    }
     
     // Status filter
     if (filterStatus !== 'all') cases = cases.filter(c => c.status === filterStatus);
@@ -3914,18 +4138,39 @@ const App = {
     
     const leaders = DB.users().filter(u => u.role === 'leader' || u.role === 'solo');
     const totalAll = DB.cases().length;
+    const staffViewing = filterStaff ? DB.user(filterStaff) : null;
     
-    return this.topBar(user, 'Customer Database', 'All company customers') + `
+    return this.topBar(user, 'Customer Database', staffViewing ? `Filtered: ${staffViewing.name}` : 'All company customers') + `
+      ${staffViewing ? `
+        <div class="info-banner" style="background: var(--primary-glow); border-left-color: var(--primary); color: var(--primary-dark); margin: 0 20px 14px;">
+          <strong>Viewing: ${staffViewing.name}'s customers</strong> · 
+          <a onclick="App.clearStaffFilter()" style="color: var(--primary); text-decoration: underline; cursor: pointer; font-weight: 700;">✕ Clear filter</a>
+        </div>
+      ` : ''}
+      
       <div class="search-bar">
         <input class="search-input" type="text" placeholder="Search by Name, IC, or Phone..." 
                value="${this.state.searchText || ''}" 
                oninput="App.setSearch(this.value)">
       </div>
       
+      <!-- Date Range Filter -->
+      <div style="padding: 0 20px 12px; display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-end;">
+        <div style="flex: 1; min-width: 130px;">
+          <label style="display: block; font-size: 10px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;">Date From</label>
+          <input type="date" value="${dateFrom}" oninput="App.setDateFilter('from', this.value)" style="width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-2); font-family: inherit; font-size: 12px;">
+        </div>
+        <div style="flex: 1; min-width: 130px;">
+          <label style="display: block; font-size: 10px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;">Date To</label>
+          <input type="date" value="${dateTo}" oninput="App.setDateFilter('to', this.value)" style="width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-2); font-family: inherit; font-size: 12px;">
+        </div>
+        ${(dateFrom || dateTo) ? `<button onclick="App.clearDateFilter()" style="padding: 8px 12px; background: var(--cream-2); color: var(--ink-2); border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-weight: 700; font-size: 11px; cursor: pointer;">✕ Clear</button>` : ''}
+      </div>
+      
       <div class="filter-bar">
-        <div class="filter-chip ${filterTime === 'month' ? 'active' : ''}" onclick="App.setFilter('adminCustTime','month')">This Month</div>
-        <div class="filter-chip ${filterTime === '3months' ? 'active' : ''}" onclick="App.setFilter('adminCustTime','3months')">3 Months</div>
-        <div class="filter-chip ${filterTime === 'all' ? 'active' : ''}" onclick="App.setFilter('adminCustTime','all')">All Time</div>
+        <div class="filter-chip ${(filterTime === 'month' && !dateFrom && !dateTo) ? 'active' : ''}" onclick="App.setFilter('adminCustTime','month'); App.clearDateFilter(true)">This Month</div>
+        <div class="filter-chip ${(filterTime === '3months' && !dateFrom && !dateTo) ? 'active' : ''}" onclick="App.setFilter('adminCustTime','3months'); App.clearDateFilter(true)">3 Months</div>
+        <div class="filter-chip ${(filterTime === 'all' && !dateFrom && !dateTo) ? 'active' : ''}" onclick="App.setFilter('adminCustTime','all'); App.clearDateFilter(true)">All Time</div>
       </div>
       
       <div class="filter-bar">
@@ -3948,11 +4193,26 @@ const App = {
       
       <div class="case-list">
         ${cases.length === 0 ? this.emptyState('No customers match these filters.') :
-          cases.slice(0, 100).map(c => this.adminCustomerCard(c)).join('')}
+          cases.slice(0, 200).map(c => this.adminCustomerCard(c, user)).join('')}
       </div>
       
-      ${cases.length > 100 ? `<div style="text-align: center; padding: 16px 20px; color: var(--ink-3); font-size: 12px;">Showing first 100 of ${cases.length} · use filters to narrow</div>` : ''}
+      ${cases.length > 200 ? `<div style="text-align: center; padding: 16px 20px; color: var(--ink-3); font-size: 12px;">Showing first 200 of ${cases.length} · use filters to narrow</div>` : ''}
     `;
+  },
+  
+  setDateFilter(which, value) {
+    if (which === 'from') this.state.dateFrom = value;
+    if (which === 'to') this.state.dateTo = value;
+    this.render();
+  },
+  clearDateFilter(silent) {
+    this.state.dateFrom = '';
+    this.state.dateTo = '';
+    if (!silent) this.render();
+  },
+  clearStaffFilter() {
+    this.state.staffFilter = null;
+    this.render();
   },
   
   setSearch(val) {
@@ -4181,6 +4441,8 @@ const App = {
           <div class="case-type-pill ${u.role === 'cs' ? 'active' : ''}" data-val="cs" onclick="App.pickRolePill(this, 'eu')">CS</div>
           <div class="case-type-pill ${u.role === 'leader' ? 'active' : ''}" data-val="leader" onclick="App.pickRolePill(this, 'eu')">Team Leader</div>
           <div class="case-type-pill ${u.role === 'solo' ? 'active' : ''}" data-val="solo" onclick="App.pickRolePill(this, 'eu')">Solo Leader</div>
+          <div class="case-type-pill ${u.role === 'manager' ? 'active' : ''}" data-val="manager" onclick="App.pickRolePill(this, 'eu')">Manager</div>
+          <div class="case-type-pill ${u.role === 'admin' ? 'active' : ''}" data-val="admin" onclick="App.pickRolePill(this, 'eu')">Boss</div>
         </div>
       </div>
       
@@ -4218,9 +4480,9 @@ const App = {
     updates.leader_id = role === 'cs' ? leaderId : null;
     if (pass) updates.password = pass;
     
-    DB.updateUser(userId, updates);
+    DB.updateUser(userId, updates);  // updateUser already syncs to Cloud
     hideModal();
-    toast('Staff updated');
+    toast('Staff updated' + (window.Cloud?.connected ? ' · synced ☁' : ''));
     this.render();
   },
   
@@ -4228,8 +4490,14 @@ const App = {
     if (!confirm('Delete this staff? (Cases linked to them will keep their name)')) return;
     const users = DB.users().filter(u => u.id !== userId);
     DB.set(DB.K.users, users);
+    // Sync delete to Firestore
+    if (window.Cloud?.connected) {
+      window.Cloud.deleteDoc('users', userId).then(success => {
+        console.log(success ? '✓ User deleted from Firestore: ' + userId : 'Failed to delete from Firestore');
+      });
+    }
     hideModal();
-    toast('Staff deleted');
+    toast('Staff deleted' + (window.Cloud?.connected ? ' · synced ☁' : ''));
     this.render();
   },
   
@@ -4255,6 +4523,8 @@ const App = {
           <div class="case-type-pill active" data-val="cs" onclick="App.pickRolePill(this, 'nu')">CS</div>
           <div class="case-type-pill" data-val="leader" onclick="App.pickRolePill(this, 'nu')">Team Leader</div>
           <div class="case-type-pill" data-val="solo" onclick="App.pickRolePill(this, 'nu')">Solo Leader</div>
+          <div class="case-type-pill" data-val="manager" onclick="App.pickRolePill(this, 'nu')">Manager</div>
+          <div class="case-type-pill" data-val="admin" onclick="App.pickRolePill(this, 'nu')">Boss</div>
         </div>
       </div>
       
@@ -4322,7 +4592,7 @@ const App = {
         return; 
       }
       
-      // Validate CS needs a leader
+      // Validate CS needs a leader (admin / solo / leader don't)
       if (role === 'cs' && !leaderId) { 
         toast('Pilih Team Leader untuk CS'); 
         leaderEl?.focus();
@@ -4331,11 +4601,12 @@ const App = {
       
       // Save new user
       const users = DB.users();
-      users.push({ 
+      const newUser = { 
         id, name, role, 
         leader_id: role === 'cs' ? leaderId : null, 
         password: pass 
-      });
+      };
+      users.push(newUser);
       const ok = DB.set(DB.K.users, users);
       
       if (!ok) {
@@ -4343,8 +4614,16 @@ const App = {
         return;
       }
       
+      // Sync to Firestore so all other staff see this new user
+      if (window.Cloud?.connected) {
+        window.Cloud.setDoc('users', id, newUser).then(success => {
+          if (success) console.log('✓ New user synced to Firestore:', id);
+          else console.warn('Failed to sync new user to Firestore');
+        });
+      }
+      
       hideModal();
-      toast('Staff "' + name + '" created · Login ID: ' + id.toUpperCase());
+      toast('Staff "' + name + '" created · Login ID: ' + id.toUpperCase() + (window.Cloud?.connected ? ' · synced ☁' : ' · local only'));
       this.render();
     } catch (e) {
       console.error('createUser error:', e);
@@ -5230,8 +5509,21 @@ const App = {
   renderAdminSettings(user) {
     const s = DB.settings();
     const draft = this.state.settingsDraft = this.state.settingsDraft || JSON.parse(JSON.stringify(s));
+    const isDirty = this.state.settingsDirty;
     
     return this.topBar(user, 'System Settings', 'All business rules · no code needed') + `
+      <!-- STICKY SAVE BAR - always visible at top -->
+      <div id="settings-save-bar" style="position: sticky; top: 0; z-index: 100; background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%); color: var(--cream); padding: 14px 20px; margin: 0 0 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 160px;">
+          <div style="font-weight: 800; font-size: 14px;">⚙️ System Settings</div>
+          <div style="font-size: 11px; opacity: 0.85;">${isDirty ? '⚠ You have unsaved changes' : '✓ All saved'}</div>
+        </div>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button onclick="App.saveSettings()" style="background: var(--accent); color: var(--primary-dark); border: none; padding: 10px 18px; border-radius: 10px; font-family: inherit; font-weight: 800; font-size: 13px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">💾 Save Changes</button>
+          <button onclick="App.discardSettings()" style="background: rgba(255,255,255,0.1); color: var(--cream); border: 1px solid rgba(255,255,255,0.2); padding: 10px 14px; border-radius: 10px; font-family: inherit; font-weight: 700; font-size: 12px; cursor: pointer;">Discard</button>
+        </div>
+      </div>
+      
       <div class="info-banner info" style="margin: 0 20px 14px;">
         <strong>Edit any setting below.</strong> Changes apply to ALL users immediately after Save. No deploy / no code needed.
       </div>
@@ -5452,6 +5744,7 @@ const App = {
   },
   
   updateTier(key, idx, field, value) {
+    this.state.settingsDirty = true;
     const d = this.state.settingsDraft;
     if (!d.commission[key][idx]) return;
     d.commission[key][idx][field] = value;
@@ -5486,6 +5779,7 @@ const App = {
   },
   
   updateListItem(key, idx, value) {
+    this.state.settingsDirty = true;
     const d = this.state.settingsDraft;
     if (!d[key]) return;
     d[key][idx] = value;
@@ -5525,6 +5819,7 @@ const App = {
   },
   
   updateTenor(idx, field, value) {
+    this.state.settingsDirty = true;
     const d = this.state.settingsDraft;
     if (!d.tenors[idx]) return;
     d.tenors[idx][field] = value;
@@ -5541,6 +5836,7 @@ const App = {
   
   // ============ Settings Draft Helpers ============
   updateSettingsDraft(path, value) {
+    this.state.settingsDirty = true;
     const d = this.state.settingsDraft;
     const parts = path.split('.');
     let obj = d;
@@ -5549,6 +5845,14 @@ const App = {
       obj = obj[parts[i]];
     }
     obj[parts[parts.length - 1]] = value;
+    // Update dirty indicator in save bar without re-rendering whole page
+    const bar = document.getElementById('settings-save-bar');
+    if (bar) {
+      const status = bar.querySelector('div > div:nth-child(2)');
+      if (status) {
+        status.innerHTML = '⚠ You have unsaved changes';
+      }
+    }
   },
   
   saveSettings() {
@@ -5573,7 +5877,8 @@ const App = {
       
       DB.updateSettings(draft);
       this.state.settingsDraft = null;
-      toast('✓ Settings saved · applied to all users');
+      this.state.settingsDirty = false;
+      toast('✓ Settings saved · synced to ' + (window.Cloud?.connected ? 'cloud ☁ · all staff get update' : 'local only'));
       this.render();
     } catch (e) {
       console.error('saveSettings:', e);
@@ -5584,6 +5889,7 @@ const App = {
   discardSettings() {
     if (!confirm('Discard all unsaved changes?')) return;
     this.state.settingsDraft = null;
+    this.state.settingsDirty = false;
     // Revert color preview
     refreshSettings();
     this.render();
@@ -5593,13 +5899,14 @@ const App = {
     if (!confirm('Reset ALL settings to factory defaults? This will overwrite current values.')) return;
     DB.resetSettingsToDefault();
     this.state.settingsDraft = null;
+    this.state.settingsDirty = false;
     toast('Settings reset to defaults');
     this.render();
   },
   
   renderFab(currentScreen) {
     const user = Auth.current();
-    if (!user || user.role === 'admin') return '';
+    if (!user || Permissions.isAdminLevel(user)) return '';
     const noFab = ['add-case', 'login'];
     if (noFab.includes(currentScreen)) return '';
     return `<button class="fab" onclick="App.goto('add-case')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>`;
@@ -5672,13 +5979,14 @@ async function bootstrap() {
           DEFAULT_PACKAGES.forEach(p => window.Cloud.setDoc('koperasi', p.id, p));
         }
         
-        toastIfReady("✓ Synced from cloud · " + cloudCases.length + " cases");
+        // Silent sync - no toast (cloud is just a background detail to users)
+        console.log("✓ Synced from cloud · " + cloudCases.length + " cases · " + cloudUsers.length + " users");
       } else {
         // Empty Firestore → seed locally + upload
         console.log("Firestore empty. Seeding...");
         DB.seed();
         await syncAllToCloud();
-        toastIfReady("✓ Initial data uploaded to cloud");
+        console.log("✓ Initial data uploaded to cloud");
       }
       
       // Subscribe to real-time updates
