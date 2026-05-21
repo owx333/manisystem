@@ -11,6 +11,7 @@
 
 <!-- ============ FIREBASE SDK (compat version - works from file:// too) ============ -->
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script>
 window.__firebaseStatus = { stage: 'loading', error: null };
@@ -37,9 +38,17 @@ window.__firebaseStatus = { stage: 'loading', error: null };
     const fbDb = firebase.firestore();
     window.__firebaseStatus.stage = 'firestore-initialized';
     
+    // Initialize Firebase Auth for security rules
+    const fbAuth = firebase.auth();
+    window.__firebaseStatus.stage = 'auth-initialized';
+    
     // Note: We don't enable IndexedDB persistence to avoid deprecation warnings and
     // version-conflict issues. App is online-first; localStorage cache handles offline reads.
-    // Future: use firebase.firestore().settings({ cache: ... }) for cleaner persistence.
+    
+    // Helper: convert app username to Firebase Auth email format
+    function nameToAuthEmail(name) {
+      return String(name).toLowerCase().trim().replace(/[^a-z0-9]/g, '') + '@awara.local';
+    }
     
     // ========== Cloud API ==========
     window.Cloud = {
@@ -47,6 +56,82 @@ window.__firebaseStatus = { stage: 'loading', error: null };
       connected: false,
       collections: ['users', 'cases', 'activities', 'customer_notes', 'seen', 'koperasi', 'announcements', 'settings'],
       listeners: {},
+      
+      // ========== Firebase Auth helpers ==========
+      auth: {
+        currentUser: () => fbAuth.currentUser,
+        nameToEmail: nameToAuthEmail,
+        
+        // Sign in via app name + password; lazy-create Auth account if needed
+        async signIn(name, password) {
+          const email = nameToAuthEmail(name);
+          
+          // Step 1: Try standard sign-in
+          try {
+            await fbAuth.signInWithEmailAndPassword(email, password);
+            console.log('🔐 Auth sign-in success:', name);
+            return { success: true };
+          } catch (e) {
+            console.log('Auth sign-in failed:', e.code, '(will check Firestore fallback)');
+            
+            // Step 2: Firestore credential check (for lazy migration of existing users)
+            const allUsers = (function() {
+              try { return JSON.parse(localStorage.getItem('awara_users') || '[]'); } 
+              catch { return []; }
+            })();
+            const lookupName = String(name).toLowerCase();
+            const fsUser = allUsers.find(u => 
+              (String(u.id).toLowerCase() === lookupName || String(u.name).toLowerCase() === lookupName) 
+              && u.password === password
+            );
+            
+            if (!fsUser) {
+              // Not in Firestore either = truly invalid
+              return { success: false, code: 'invalid', error: 'Login ID atau password salah.' };
+            }
+            
+            // Step 3: Firestore matches. Lazy-create Auth account
+            try {
+              await fbAuth.createUserWithEmailAndPassword(email, password);
+              console.log('🆕 Auth account auto-created for:', name);
+              return { success: true, lazy: true };
+            } catch (e2) {
+              if (e2.code === 'auth/email-already-in-use') {
+                // Auth account exists but password differs (admin changed password in app but Auth not synced)
+                return { 
+                  success: false, 
+                  code: 'auth-out-of-sync',
+                  error: 'Auth out of sync. Boss kena delete user di Firebase Console (Authentication tab) untuk reset.'
+                };
+              }
+              if (e2.code === 'auth/weak-password') {
+                return { 
+                  success: false, 
+                  code: 'weak-password',
+                  error: 'Password mesti at least 6 chars (untuk security migration). Sila contact Boss.'
+                };
+              }
+              return { success: false, code: e2.code, error: e2.message };
+            }
+          }
+        },
+        
+        async signOut() {
+          try {
+            await fbAuth.signOut();
+            console.log('🔓 Auth signed out');
+            return true;
+          } catch (e) {
+            console.error('Sign-out error:', e);
+            return false;
+          }
+        },
+        
+        // Subscribe to auth state changes (for cross-tab sync)
+        onAuthChange(callback) {
+          return fbAuth.onAuthStateChanged(callback);
+        }
+      },
       
       async setDoc(collectionName, docId, data) {
         try {
@@ -137,7 +222,14 @@ window.__firebaseStatus = { stage: 'loading', error: null };
       getDoc: async () => null,
       batchSet: async () => false,
       subscribe: () => {},
-      unsubscribeAll: () => {}
+      unsubscribeAll: () => {},
+      auth: {
+        currentUser: () => null,
+        nameToEmail: n => String(n).toLowerCase() + '@awara.local',
+        signIn: async () => ({ success: false, code: 'cloud-offline', error: 'Cloud sync offline. Internet check + try again.' }),
+        signOut: async () => true,
+        onAuthChange: () => () => {}
+      }
     };
     window.dispatchEvent(new Event('cloud-ready'));
   }
@@ -2065,6 +2157,10 @@ const App = {
   },
   
   logout() {
+    // Sign out of Firebase Auth (locks Firestore access via security rules)
+    if (window.Cloud?.auth) {
+      window.Cloud.auth.signOut().catch(e => console.error('Auth signout error:', e));
+    }
     Auth.logout();
     this.state.currentScreen = 'login';
     this.render();
@@ -2103,19 +2199,58 @@ const App = {
     document.getElementById('login-name')?.focus();
   },
   
-  doLogin() {
+  async doLogin() {
     const name = document.getElementById('login-name').value.trim();
     const pass = document.getElementById('login-pass').value;
     const err = document.getElementById('login-error');
-    const result = Auth.login(name, pass);
-    if (!result.ok) {
-      err.textContent = result.error;
+    
+    if (!name || !pass) {
+      err.textContent = 'Sila masukkan Name ID dan password';
       err.classList.add('show');
       return;
     }
+    
+    // Show loading state
     err.classList.remove('show');
-    this.state.currentScreen = this.defaultScreen(result.user);
-    this.render();
+    const btn = document.querySelector('.login-btn');
+    if (btn) { btn.textContent = 'Signing in...'; btn.disabled = true; }
+    
+    try {
+      // Step 1: Verify Firestore credentials (existing app logic)
+      const result = Auth.login(name, pass);
+      if (!result.ok) {
+        err.textContent = result.error;
+        err.classList.add('show');
+        if (btn) { btn.textContent = 'Sign In'; btn.disabled = false; }
+        return;
+      }
+      
+      // Step 2: Sign in to Firebase Auth (for Firestore security rules)
+      if (window.Cloud?.connected && window.Cloud.auth) {
+        const authResult = await window.Cloud.auth.signIn(name, pass);
+        if (!authResult.success) {
+          // Auth failed but Firestore matched - this is the "out of sync" case
+          // Sign out Firestore session, show clear error
+          Auth.logout();
+          err.textContent = authResult.error || 'Auth sign-in failed';
+          err.classList.add('show');
+          if (btn) { btn.textContent = 'Sign In'; btn.disabled = false; }
+          return;
+        }
+        if (authResult.lazy) {
+          console.log('🔐 First-time secure login — Auth account created for', name);
+        }
+      }
+      
+      // Both succeeded — proceed to dashboard
+      this.state.currentScreen = this.defaultScreen(result.user);
+      this.render();
+    } catch (e) {
+      console.error('Login error:', e);
+      err.textContent = 'Login error: ' + (e.message || 'Unknown');
+      err.classList.add('show');
+      if (btn) { btn.textContent = 'Sign In'; btn.disabled = false; }
+    }
   },
   
   // ============ TOP BAR ============
@@ -4482,7 +4617,13 @@ const App = {
     
     DB.updateUser(userId, updates);  // updateUser already syncs to Cloud
     hideModal();
-    toast('Staff updated' + (window.Cloud?.connected ? ' · synced ☁' : ''));
+    
+    if (pass) {
+      // Password changed - Firebase Auth won't be in sync until manual reset
+      toast('Staff updated ☁ · ⚠ Password changed: ask user to ask Boss reset di Firebase Console > Authentication if next login fails');
+    } else {
+      toast('Staff updated' + (window.Cloud?.connected ? ' · synced ☁' : ''));
+    }
     this.render();
   },
   
@@ -4623,7 +4764,7 @@ const App = {
       }
       
       hideModal();
-      toast('Staff "' + name + '" created · Login ID: ' + id.toUpperCase() + (window.Cloud?.connected ? ' · synced ☁' : ' · local only'));
+      toast('Staff "' + name + '" created · Login ID: ' + id.toUpperCase() + (window.Cloud?.connected ? ' · ☁ synced · they sign-in 1st time to auto-create secure Auth' : ' · local only'));
       this.render();
     } catch (e) {
       console.error('createUser error:', e);
@@ -6037,6 +6178,40 @@ async function bootstrap() {
   // Refresh dynamic LOAN_PACKAGES from DB.koperasi() + Settings from DB.settings()
   refreshPackages();
   refreshSettings();
+  
+  // Session restoration via Firebase Auth (persists across reloads)
+  // If user was previously signed in to Firebase Auth, restore their app session
+  if (window.Cloud?.auth) {
+    const authUser = window.Cloud.auth.currentUser();
+    if (authUser && !Auth.current()) {
+      // Map auth email back to Firestore user
+      const emailLocal = authUser.email.split('@')[0].toLowerCase();
+      const fsUser = DB.users().find(u => 
+        String(u.id).toLowerCase().replace(/[^a-z0-9]/g, '') === emailLocal ||
+        String(u.name).toLowerCase().replace(/[^a-z0-9]/g, '') === emailLocal
+      );
+      if (fsUser) {
+        DB.setSession(fsUser.id);
+        console.log('🔐 Restored session from Firebase Auth:', fsUser.name);
+      } else {
+        // Auth signed in but no matching Firestore user - sign out
+        console.warn('Auth user but no Firestore match, signing out:', emailLocal);
+        window.Cloud.auth.signOut();
+      }
+    }
+    
+    // Listen for auth changes (e.g., sign-out from another tab)
+    window.Cloud.auth.onAuthChange(authUser => {
+      if (!authUser && Auth.current()) {
+        // Signed out elsewhere
+        DB.clearSession();
+        if (App.state.currentScreen !== 'login') {
+          App.state.currentScreen = 'login';
+          App.render();
+        }
+      }
+    });
+  }
   
   // No auto-login - show login screen first (PRODUCTION MODE)
   // (For dev/demo, append ?dev=1 to URL to use persona switcher)
