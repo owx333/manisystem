@@ -619,6 +619,28 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--cream); c
   .case-card { padding: 16px 18px; }
   .case-customer { font-size: 14px; }
   .team-card { display: inline-block; width: calc(50% - 24px); margin-right: 8px; vertical-align: top; }
+  
+  /* Login screen: full-screen centered on desktop (no sidebar visible) */
+  #screen-login { 
+    position: fixed !important;
+    top: 0; left: 0; right: 0; bottom: 0;
+    padding: 60px 40px !important;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+  #screen-login.active {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  /* When login is showing, hide the sidebar */
+  body.login-mode .bottom-nav { display: none !important; }
+  body.login-mode .app { padding-left: 0 !important; padding-top: 0 !important; }
+  
+  .login-header { margin-top: 0 !important; }
+  .login-awara { font-size: 84px !important; }
+  .login-form { max-width: 420px; width: 100%; margin: 40px auto 0 !important; }
+  .login-footer { max-width: 420px; margin: 30px auto 0; }
 }
 </style>
 </head>
@@ -1897,6 +1919,7 @@ const App = {
     
     if (!user) {
       this.state.currentScreen = 'login';
+      document.body.classList.add('login-mode');
       app.innerHTML = this.renderLogin();
       app.querySelector('#screen-login').classList.add('active');
       this.bindLogin();
@@ -1905,6 +1928,7 @@ const App = {
     }
     
     // Logged in
+    document.body.classList.remove('login-mode');
     this.renderPersonaBar();
     const screen = this.state.currentScreen === 'login' ? this.defaultScreen(user) : this.state.currentScreen;
     
@@ -1994,6 +2018,7 @@ const App = {
   
   // ============ LOGIN ============
   renderLogin() {
+    const isDev = location.search.includes('dev=1');
     return `
       <section id="screen-login" class="screen">
         <div class="login-header">
@@ -2004,18 +2029,17 @@ const App = {
         <form class="login-form" onsubmit="event.preventDefault(); App.doLogin();">
           <div class="input-group">
             <label>Name ID</label>
-            <input type="text" id="login-name" placeholder="e.g. ANIS" style="text-transform: uppercase;" autocomplete="off">
+            <input type="text" id="login-name" placeholder="Your Name ID" style="text-transform: uppercase;" autocomplete="off">
           </div>
           <div class="input-group">
             <label>Password</label>
-            <input type="password" id="login-pass" placeholder="••••••••" value="1234">
+            <input type="password" id="login-pass" placeholder="••••••••" value="${isDev ? '1234' : ''}">
           </div>
           <button type="submit" class="login-btn">Sign In</button>
           <div class="login-error" id="login-error"></div>
         </form>
         <div class="login-footer">
-          AWARA Sdn Bhd · Penang Malaysia<br>
-          Demo: ANIS / FAIZAH / WILSON · password: 1234
+          AWARA Sdn Bhd · Penang Malaysia${isDev ? '<br><span style="opacity:0.5;">DEV: ANIS / FAIZAH / WILSON / password 1234</span>' : ''}
         </div>
       </section>
     `;
@@ -5761,23 +5785,46 @@ function toastIfReady(msg) {
 // Wait for both DOM and Cloud to be ready before booting
 let domReady = false;
 let cloudReady = false;
+let booted = false;
+
 function tryBoot() {
-  if (domReady && (cloudReady || !window.Cloud)) {
+  if (booted) return;
+  // Cloud is "ready" if window.Cloud object exists (either connected or in error state)
+  // OR if 8s timeout has passed
+  const cloudObjectExists = typeof window.Cloud !== 'undefined';
+  if (domReady && (cloudReady || cloudObjectExists)) {
+    booted = true;
     bootstrap();
   }
 }
 
-window.addEventListener('DOMContentLoaded', () => { domReady = true; tryBoot(); });
-window.addEventListener('cloud-ready', () => { cloudReady = true; tryBoot(); });
+window.addEventListener('DOMContentLoaded', () => { 
+  domReady = true; 
+  // Cloud script ran in <head> BEFORE this event, so window.Cloud should already exist
+  // (Polling fallback below catches edge cases)
+  tryBoot(); 
+});
 
-// Fallback: boot after 8s even if module hasn't loaded
-setTimeout(() => {
-  if (!cloudReady) {
-    console.warn("Cloud module didn't load within 8s — booting with local data");
+// Also poll for window.Cloud (head script may have completed before DOMContentLoaded listener registered)
+let pollCount = 0;
+const cloudPoll = setInterval(() => {
+  pollCount++;
+  if (typeof window.Cloud !== 'undefined' || pollCount > 80) {  // poll for 8s max
     cloudReady = true;
+    clearInterval(cloudPoll);
+    if (domReady) tryBoot();
+  }
+}, 100);
+
+// Hard fallback: 10s
+setTimeout(() => {
+  if (!booted) {
+    console.warn("Force-booting after 10s timeout");
+    cloudReady = true;
+    domReady = true;
     tryBoot();
   }
-}, 8000);
+}, 10000);
 
 // Show "Loading..." while waiting
 setTimeout(() => {
@@ -5840,10 +5887,12 @@ function showCloudDiagnostic() {
   document.body.appendChild(banner);
 }
 
-// Check after boot completes
+// Check after boot completes - only show diagnostic if truly disconnected
 setTimeout(() => {
-  if (!window.Cloud?.connected) showCloudDiagnostic();
-}, 9000);
+  if (window.Cloud && window.Cloud.connected) return;  // all good
+  if (window.Cloud && window.Cloud.error) showCloudDiagnostic();  // error captured
+  else if (typeof window.Cloud === 'undefined') showCloudDiagnostic();  // SDK didn't load at all
+}, 11000);
 
 // Cloud status indicator polling
 setInterval(() => {
