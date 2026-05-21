@@ -4313,20 +4313,6 @@ const App = {
         <input type="date" id="ec-date" value="${c.date_payslip}">
       </div>
       
-      <div class="form-group">
-        <label>Reassign CS</label>
-        <select id="ec-cs">
-          ${allCS.map(u => `<option value="${u.id}" ${u.id === c.source_cs_id ? 'selected' : ''}>${u.name} (${ROLE_LABELS[u.role]})</option>`).join('')}
-        </select>
-      </div>
-      
-      <div class="form-group">
-        <label>Reassign Team Leader</label>
-        <select id="ec-leader">
-          ${allLeaders.map(u => `<option value="${u.id}" ${u.id === c.leader_id ? 'selected' : ''}>${u.name}</option>`).join('')}
-        </select>
-      </div>
-      
       ${c.package_id ? `
         <div style="font-size: 11px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; margin: 16px 0 8px;">Stage 2 · Loan Details</div>
         <div class="info-banner info" style="margin-bottom: 12px; font-size: 11px;">To edit Stage 2 (pakej/loan), use "Edit Stage 2 Details" button from case detail.</div>
@@ -4353,8 +4339,6 @@ const App = {
     const pend = parseFloat(document.getElementById('ec-pend').value) || 0;
     const pot = parseFloat(document.getElementById('ec-pot').value) || 0;
     const date = document.getElementById('ec-date').value;
-    const csId = document.getElementById('ec-cs').value;
-    const leaderId = document.getElementById('ec-leader').value;
     const { bersih, pct } = calcGajiBersih(pend, pot);
     
     DB.updateCase(caseId, {
@@ -4365,8 +4349,7 @@ const App = {
       gaji_bersih: bersih,
       gaji_bersih_pct: pct,
       date_payslip: date,
-      source_cs_id: csId,
-      leader_id: leaderId
+      
     });
     
     toast('Customer info updated');
