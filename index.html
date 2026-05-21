@@ -2446,8 +2446,8 @@ const App = {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
           <div><span style="color: var(--ink-3);">Phone:</span> <strong>${c.phone || '—'}</strong></div>
           <div><span style="color: var(--ink-3);">Date:</span> <strong>${new Date(c.date_payslip).toLocaleDateString('en-MY')}</strong></div>
-          <div><span style="color: var(--ink-3);">Pendapatan:</span> <strong>RM ${Number(c.jumlah_pendapatan).toFixed(2)}</strong></div>
-          <div><span style="color: var(--ink-3);">Potongan:</span> <strong>RM ${Number(c.jumlah_potongan).toFixed(2)}</strong></div>
+          <div><span style="color: var(--ink-3);">Pendapatan:</span> <strong>${fmtRM(c.jumlah_pendapatan)}</strong></div>
+          <div><span style="color: var(--ink-3);">Potongan:</span> <strong>${fmtRM(c.jumlah_potongan)}</strong></div>
           <div><span style="color: var(--ink-3);">Gaji Bersih:</span> <strong style="color: var(--primary);">${fmtRM(c.gaji_bersih)}</strong></div>
           <div><span style="color: var(--ink-3);">Peratus:</span> <strong style="color: var(--primary);">${c.gaji_bersih_pct.toFixed(2)}%</strong></div>
         </div>
