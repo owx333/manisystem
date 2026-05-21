@@ -1925,7 +1925,7 @@ function fmt(n) {
 }
 function fmtK(n) {
   if (!n || n === 0) return '0';
-  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  if (n >= 1000) return (n / 1000).toFixed(2).replace(/\.0$/, '') + 'k';
   return String(n);
 }
 function fmtRM(n) { return 'RM ' + fmt(n); }
@@ -2449,7 +2449,7 @@ const App = {
           <div><span style="color: var(--ink-3);">Pendapatan:</span> <strong>${fmtRM(c.jumlah_pendapatan)}</strong></div>
           <div><span style="color: var(--ink-3);">Potongan:</span> <strong>${fmtRM(c.jumlah_potongan)}</strong></div>
           <div><span style="color: var(--ink-3);">Gaji Bersih:</span> <strong style="color: var(--primary);">${fmtRM(c.gaji_bersih)}</strong></div>
-          <div><span style="color: var(--ink-3);">Peratus:</span> <strong style="color: var(--primary);">${c.gaji_bersih_pct.toFixed(1)}%</strong></div>
+          <div><span style="color: var(--ink-3);">Peratus:</span> <strong style="color: var(--primary);">${c.gaji_bersih_pct.toFixed(2)}%</strong></div>
         </div>
       </div>
       
@@ -3524,7 +3524,7 @@ const App = {
       rows.push([
         c.date_payslip, cs?.name || c.source_cs_id, leader?.name || c.leader_id,
         c.customer_name, c.ic, c.phone || '',
-        c.jumlah_pendapatan, c.jumlah_potongan, c.gaji_bersih, c.gaji_bersih_pct?.toFixed(1) + '%',
+        c.jumlah_pendapatan, c.jumlah_potongan, c.gaji_bersih, c.gaji_bersih_pct?.toFixed(2) + '%',
         pkgName(c.package_id) || '', c.loan_amount || '', c.tenor || '', c.bulanan?.toFixed(2) || '',
         c.case_type || '', STATUS_LABELS[c.status] || c.status,
         c.disburse_amount?.toFixed(2) || '', c.rejection_reason || ''
@@ -3700,7 +3700,7 @@ const App = {
     const pot = parseFloat(document.getElementById('f-potongan').value) || 0;
     const { bersih, pct } = calcGajiBersih(pend, pot);
     document.getElementById('f-bersih').textContent = 'RM ' + fmt(bersih);
-    document.getElementById('f-pct').textContent = pct.toFixed(1) + '%';
+    document.getElementById('f-pct').textContent = pct.toFixed(2) + '%';
   },
   
   // Check if IC already exists in system - show warning + offer to view
@@ -4304,7 +4304,7 @@ const App = {
       <div style="background: var(--primary-glow); padding: 12px; border-radius: 10px; margin-bottom: 14px;">
         <div style="display: flex; justify-content: space-between;">
           <div><span style="font-size: 10px; color: var(--ink-3); text-transform: uppercase; font-weight: 700;">Gaji Bersih</span><br><strong id="ec-bersih" style="font-size: 18px; color: var(--primary);">RM ${c.gaji_bersih.toFixed(2)}</strong></div>
-          <div><span style="font-size: 10px; color: var(--ink-3); text-transform: uppercase; font-weight: 700;">Peratus</span><br><strong id="ec-pct" style="font-size: 18px; color: var(--primary);">${c.gaji_bersih_pct.toFixed(1)}%</strong></div>
+          <div><span style="font-size: 10px; color: var(--ink-3); text-transform: uppercase; font-weight: 700;">Peratus</span><br><strong id="ec-pct" style="font-size: 18px; color: var(--primary);">${c.gaji_bersih_pct.toFixed(2)}%</strong></div>
         </div>
       </div>
       
@@ -4328,7 +4328,7 @@ const App = {
     const pot = parseFloat(document.getElementById('ec-pot').value) || 0;
     const { bersih, pct } = calcGajiBersih(pend, pot);
     document.getElementById('ec-bersih').textContent = 'RM ' + bersih.toFixed(2);
-    document.getElementById('ec-pct').textContent = pct.toFixed(1) + '%';
+    document.getElementById('ec-pct').textContent = pct.toFixed(2) + '%';
   },
   
   saveEditCustomer(caseId) {
@@ -4848,7 +4848,7 @@ const App = {
           </svg>
           <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: var(--ink-3);">
             <span>Total 30 days: <strong style="color: var(--primary);">${days.reduce((s,d) => s + d.count, 0)} payslips</strong></span>
-            <span>Avg/day: <strong style="color: var(--primary);">${(days.reduce((s,d) => s + d.count, 0) / 30).toFixed(1)}</strong></span>
+            <span>Avg/day: <strong style="color: var(--primary);">${(days.reduce((s,d) => s + d.count, 0) / 30).toFixed(2)}</strong></span>
           </div>
         </div>
       </div>
