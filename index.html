@@ -3699,7 +3699,7 @@ const App = {
     const pend = parseFloat(document.getElementById('f-pendapatan').value) || 0;
     const pot = parseFloat(document.getElementById('f-potongan').value) || 0;
     const { bersih, pct } = calcGajiBersih(pend, pot);
-    document.getElementById('f-bersih').textContent = 'RM ' + fmt(bersih);
+    document.getElementById('f-bersih').textContent = 'RM ' + Number(bersih).toFixed(2);
     document.getElementById('f-pct').textContent = pct.toFixed(2) + '%';
   },
   
