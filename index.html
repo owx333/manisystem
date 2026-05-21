@@ -8,144 +8,142 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-<!-- ============ FIREBASE SDK ============ -->
-<script type="module">
+<!-- ============ FIREBASE SDK (compat version - works from file:// too) ============ -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
 window.__firebaseStatus = { stage: 'loading', error: null };
 
-try {
-  const { initializeApp } = await import("https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js");
-  window.__firebaseStatus.stage = 'app-loaded';
-  
-  const { 
-    getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, 
-    onSnapshot, writeBatch, enableIndexedDbPersistence
-  } = await import("https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js");
-  window.__firebaseStatus.stage = 'firestore-loaded';
-  
-  const firebaseConfig = {
-    apiKey: "AIzaSyCQ9wGA6mSUxk38unlhZirAjQ_gLylGz7I",
-    authDomain: "awara-a8a89.firebaseapp.com",
-    projectId: "awara-a8a89",
-    storageBucket: "awara-a8a89.firebasestorage.app",
-    messagingSenderId: "710757319807",
-    appId: "1:710757319807:web:067c96d78351a76b06ab4a"
-  };
-  
-  const fbApp = initializeApp(firebaseConfig);
-  window.__firebaseStatus.stage = 'app-initialized';
-  
-  const fbDb = getFirestore(fbApp);
-  window.__firebaseStatus.stage = 'firestore-initialized';
-  
-  // Persistence - fire and forget (don't block on this; it hangs on iOS Safari Private Mode)
-  enableIndexedDbPersistence(fbDb).then(() => {
-    console.log("Firebase offline persistence enabled");
-  }).catch(e => {
-    console.log("Persistence skipped:", e.code || e.message);
-  });
-  
-  // ========== Cloud API exposed to main script ==========
-  window.Cloud = {
-    enabled: true,
-    connected: false,
-    collections: ['users', 'cases', 'activities', 'customer_notes', 'seen', 'koperasi', 'announcements', 'settings'],
-    listeners: {},
-    
-    async setDoc(collectionName, docId, data) {
-      try {
-        const clean = JSON.parse(JSON.stringify(data));
-        await setDoc(doc(fbDb, collectionName, String(docId)), clean);
-        return true;
-      } catch (e) {
-        console.error("Cloud.setDoc error:", collectionName, docId, e);
-        return false;
-      }
-    },
-    async deleteDoc(collectionName, docId) {
-      try {
-        await deleteDoc(doc(fbDb, collectionName, String(docId)));
-        return true;
-      } catch (e) {
-        console.error("Cloud.deleteDoc error:", e);
-        return false;
-      }
-    },
-    async getAll(collectionName) {
-      try {
-        const snap = await getDocs(collection(fbDb, collectionName));
-        return snap.docs.map(d => d.data());
-      } catch (e) {
-        console.error("Cloud.getAll error:", collectionName, e);
-        return [];
-      }
-    },
-    async getDoc(collectionName, docId) {
-      try {
-        const snap = await getDoc(doc(fbDb, collectionName, String(docId)));
-        return snap.exists() ? snap.data() : null;
-      } catch (e) {
-        console.error("Cloud.getDoc error:", e);
-        return null;
-      }
-    },
-    async batchSet(collectionName, items, keyField = 'id') {
-      try {
-        const batch = writeBatch(fbDb);
-        items.forEach(item => {
-          const cleanItem = JSON.parse(JSON.stringify(item));
-          batch.set(doc(fbDb, collectionName, String(cleanItem[keyField])), cleanItem);
-        });
-        await batch.commit();
-        return true;
-      } catch (e) {
-        console.error("Cloud.batchSet error:", e);
-        return false;
-      }
-    },
-    subscribe(collectionName, callback) {
-      if (this.listeners[collectionName]) this.listeners[collectionName]();
-      this.listeners[collectionName] = onSnapshot(collection(fbDb, collectionName), 
-        snap => {
-          const items = snap.docs.map(d => d.data());
-          callback(items);
-        },
-        err => console.error("Subscribe error:", collectionName, err)
-      );
-    },
-    unsubscribeAll() {
-      Object.values(this.listeners).forEach(fn => fn && fn());
-      this.listeners = {};
+(function initFirebase() {
+  try {
+    if (typeof firebase === 'undefined') {
+      throw new Error('Firebase SDK not loaded (script tags failed - possibly adblock or no network)');
     }
-  };
-  
-  window.Cloud.connected = true;
-  window.__firebaseStatus.stage = 'ready';
-  console.log("Firebase Connected ✅ Project: awara-a8a89");
-  window.dispatchEvent(new Event('cloud-ready'));
-  
-} catch (e) {
-  // Firebase initialization failed - record error + still dispatch event so app boots in local mode
-  window.__firebaseStatus.error = (e && (e.message || String(e))) || 'Unknown error';
-  window.__firebaseStatus.stage = window.__firebaseStatus.stage + '-failed';
-  console.error("❌ Firebase initialization failed:", e);
-  console.error("Stage:", window.__firebaseStatus.stage);
-  
-  // Provide a fake Cloud object so the app doesn't crash when calling Cloud methods
-  window.Cloud = {
-    enabled: false,
-    connected: false,
-    error: window.__firebaseStatus.error,
-    stage: window.__firebaseStatus.stage,
-    setDoc: async () => false,
-    deleteDoc: async () => false,
-    getAll: async () => [],
-    getDoc: async () => null,
-    batchSet: async () => false,
-    subscribe: () => {},
-    unsubscribeAll: () => {}
-  };
-  window.dispatchEvent(new Event('cloud-ready'));
-}
+    window.__firebaseStatus.stage = 'sdk-loaded';
+    
+    const firebaseConfig = {
+      apiKey: "AIzaSyCQ9wGA6mSUxk38unlhZirAjQ_gLylGz7I",
+      authDomain: "awara-a8a89.firebaseapp.com",
+      projectId: "awara-a8a89",
+      storageBucket: "awara-a8a89.firebasestorage.app",
+      messagingSenderId: "710757319807",
+      appId: "1:710757319807:web:067c96d78351a76b06ab4a"
+    };
+    
+    firebase.initializeApp(firebaseConfig);
+    window.__firebaseStatus.stage = 'app-initialized';
+    
+    const fbDb = firebase.firestore();
+    window.__firebaseStatus.stage = 'firestore-initialized';
+    
+    // Persistence - fire and forget
+    fbDb.enablePersistence({ synchronizeTabs: false }).then(() => {
+      console.log("Firebase offline persistence enabled");
+    }).catch(e => {
+      console.log("Persistence skipped:", e.code || e.message);
+    });
+    
+    // ========== Cloud API ==========
+    window.Cloud = {
+      enabled: true,
+      connected: false,
+      collections: ['users', 'cases', 'activities', 'customer_notes', 'seen', 'koperasi', 'announcements', 'settings'],
+      listeners: {},
+      
+      async setDoc(collectionName, docId, data) {
+        try {
+          const clean = JSON.parse(JSON.stringify(data));
+          await fbDb.collection(collectionName).doc(String(docId)).set(clean);
+          return true;
+        } catch (e) {
+          console.error("Cloud.setDoc error:", collectionName, docId, e);
+          return false;
+        }
+      },
+      async deleteDoc(collectionName, docId) {
+        try {
+          await fbDb.collection(collectionName).doc(String(docId)).delete();
+          return true;
+        } catch (e) {
+          console.error("Cloud.deleteDoc error:", e);
+          return false;
+        }
+      },
+      async getAll(collectionName) {
+        try {
+          const snap = await fbDb.collection(collectionName).get();
+          return snap.docs.map(d => d.data());
+        } catch (e) {
+          console.error("Cloud.getAll error:", collectionName, e);
+          return [];
+        }
+      },
+      async getDoc(collectionName, docId) {
+        try {
+          const snap = await fbDb.collection(collectionName).doc(String(docId)).get();
+          return snap.exists ? snap.data() : null;
+        } catch (e) {
+          console.error("Cloud.getDoc error:", e);
+          return null;
+        }
+      },
+      async batchSet(collectionName, items, keyField = 'id') {
+        try {
+          const batch = fbDb.batch();
+          items.forEach(item => {
+            const cleanItem = JSON.parse(JSON.stringify(item));
+            batch.set(fbDb.collection(collectionName).doc(String(cleanItem[keyField])), cleanItem);
+          });
+          await batch.commit();
+          return true;
+        } catch (e) {
+          console.error("Cloud.batchSet error:", e);
+          return false;
+        }
+      },
+      subscribe(collectionName, callback) {
+        if (this.listeners[collectionName]) this.listeners[collectionName]();
+        this.listeners[collectionName] = fbDb.collection(collectionName).onSnapshot(
+          snap => {
+            const items = snap.docs.map(d => d.data());
+            callback(items);
+          },
+          err => console.error("Subscribe error:", collectionName, err)
+        );
+      },
+      unsubscribeAll() {
+        Object.values(this.listeners).forEach(fn => fn && fn());
+        this.listeners = {};
+      }
+    };
+    
+    window.Cloud.connected = true;
+    window.__firebaseStatus.stage = 'ready';
+    console.log("Firebase Connected ✅ Project: awara-a8a89");
+    window.dispatchEvent(new Event('cloud-ready'));
+    
+  } catch (e) {
+    window.__firebaseStatus.error = (e && (e.message || String(e))) || 'Unknown error';
+    window.__firebaseStatus.stage = window.__firebaseStatus.stage + '-failed';
+    console.error("❌ Firebase initialization failed:", e);
+    console.error("Stage:", window.__firebaseStatus.stage);
+    
+    window.Cloud = {
+      enabled: false,
+      connected: false,
+      error: window.__firebaseStatus.error,
+      stage: window.__firebaseStatus.stage,
+      setDoc: async () => false,
+      deleteDoc: async () => false,
+      getAll: async () => [],
+      getDoc: async () => null,
+      batchSet: async () => false,
+      subscribe: () => {},
+      unsubscribeAll: () => {}
+    };
+    window.dispatchEvent(new Event('cloud-ready'));
+  }
+})();
 </script>
 <style>
 :root {
@@ -465,32 +463,30 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--cream); c
 
 /* ============ RESPONSIVE: Desktop Website Mode ============ */
 @media (min-width: 768px) and (max-width: 1023px) {
-  .app { max-width: 720px; }
-  .kpi-grid { grid-template-columns: repeat(3, 1fr); }
-  .kpi-card.featured { grid-column: span 3; }
-  .targets-grid { grid-template-columns: repeat(3, 1fr); gap: 24px; }
-  .awards-grid { grid-template-columns: repeat(3, 1fr); }
-  body { font-size: 16px; }
+  .app { padding-left: 220px !important; }
+  .bottom-nav { width: 220px !important; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .kpi-card.featured { grid-column: span 2 !important; }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 768px) {
   body { padding: 0; background: var(--cream); margin: 0; }
   
-  /* Persona bar across top */
+  /* Persona bar across top (hidden by default in prod, shown with ?dev=1) */
   .persona-bar { 
     position: fixed; top: 0; left: 0; right: 0; z-index: 200;
     padding: 10px 24px;
   }
   
-  /* App container fills entire viewport */
+  /* App container fills entire viewport · sidebar on left */
   .app { 
-    max-width: none;
+    max-width: none !important;
     width: 100%;
     margin: 0;
     padding-left: 240px;
     padding-right: 0;
     padding-bottom: 40px;
-    padding-top: 50px;
+    padding-top: 0;
     min-height: 100vh;
     box-shadow: none;
     background: var(--cream);
@@ -499,12 +495,13 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--cream); c
   
   /* Bottom nav becomes left sidebar at viewport's left edge */
   .bottom-nav {
-    position: fixed;
-    top: 50px;
+    position: fixed !important;
+    top: 0;
     left: 0;
     bottom: 0;
-    width: 240px;
-    height: calc(100vh - 50px);
+    width: 240px !important;
+    max-width: 240px !important;
+    height: 100vh;
     padding: 24px 14px;
     flex-direction: column;
     justify-content: flex-start;
@@ -515,8 +512,7 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--cream); c
     backdrop-filter: none;
     box-shadow: 1px 0 0 var(--border-2);
     gap: 4px;
-    transform: none;
-    max-width: none;
+    transform: none !important;
     z-index: 50;
     overflow-y: auto;
   }
@@ -532,6 +528,7 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--cream); c
     font-size: 18px;
     letter-spacing: 0.03em;
     margin-bottom: 12px;
+    display: block;
   }
   
   .nav-item {
@@ -544,26 +541,21 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--cream); c
     font-size: 13px;
     text-align: left;
   }
-  .nav-item .icon {
-    width: 28px; height: 28px; flex-shrink: 0;
-  }
-  .nav-item.active {
-    background: var(--primary-glow);
-  }
-  .nav-item.active .icon {
-    background: var(--primary);
-  }
+  .nav-item .icon { width: 28px; height: 28px; flex-shrink: 0; }
+  .nav-item.active { background: var(--primary-glow); }
+  .nav-item.active .icon { background: var(--primary); }
   
-  /* Top bar full width inside content area */
+  /* When persona bar is shown (dev mode), push everything down 40px */
+  .persona-bar:not([style*="none"]) ~ #app .top-bar { top: 40px; }
+  
   .top-bar { 
-    top: 50px;  /* below fixed persona-bar */
+    top: 0;
     position: sticky;
     padding: 24px 40px 18px;
   }
   
   .greeting .name { font-size: 30px; }
   
-  /* Content area gets larger grids - cap inner content for readability on ultra-wide */
   .kpi-grid { 
     grid-template-columns: repeat(4, 1fr); 
     padding: 20px 40px 0;
@@ -574,7 +566,6 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--cream); c
   .kpi-card .value { font-size: 30px; }
   .kpi-card.featured .value { font-size: 38px; }
   
-  /* Section padding */
   .section-header,
   .targets-card,
   .month-pill,
@@ -601,7 +592,6 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--cream); c
   .targets-grid { gap: 32px; }
   .targets-card { padding: 24px 28px; }
   
-  /* FAB stays bottom-right floating */
   .fab {
     position: fixed;
     bottom: 30px;
@@ -613,7 +603,6 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--cream); c
     height: 60px;
   }
   
-  /* Modal stays centered */
   .modal-overlay { align-items: center; }
   .modal-sheet {
     max-width: 560px;
@@ -621,20 +610,14 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--cream); c
     max-height: 90vh;
   }
   
-  /* Larger awards */
   .awards-grid { grid-template-columns: repeat(3, 1fr); gap: 14px; }
   .award-card { padding: 20px 12px 18px; }
   .award-card .winner { font-size: 18px; }
   .award-card .stat { font-size: 22px; }
   
-  /* Filter chips bigger */
   .filter-chip { padding: 8px 16px; font-size: 12px; }
-  
-  /* Case cards spread out */
   .case-card { padding: 16px 18px; }
   .case-customer { font-size: 14px; }
-  
-  /* Team cards 2-column on desktop */
   .team-card { display: inline-block; width: calc(50% - 24px); margin-right: 8px; vertical-align: top; }
 }
 </style>
