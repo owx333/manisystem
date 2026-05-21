@@ -2729,11 +2729,11 @@ const App = {
       <div class="form-row">
         <div class="form-group">
           <label>Loan Amount (RM) · manual</label>
-          <input type="number" id="pc-amt" value="${c.loan_amount || ''}" min="0" step="100" inputmode="numeric" placeholder="e.g. 50000" oninput="App.recalcBulanan()">
+          <input type="number" id="pc-amt" value="${c.loan_amount || ''}" min="0" step="100" inputmode="numeric" placeholder="e.g. 50000" >
         </div>
         <div class="form-group">
           <label>Tenor (months) · manual</label>
-          <input type="number" id="pc-tenor" value="${c.tenor || ''}" min="0" step="1" inputmode="numeric" placeholder="e.g. 84" oninput="App.recalcBulanan()">
+          <input type="number" id="pc-tenor" value="${c.tenor || ''}" min="0" step="1" inputmode="numeric" placeholder="e.g. 84" >
         </div>
       </div>
       
