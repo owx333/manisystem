@@ -2414,7 +2414,7 @@ const App = {
     // - CS: only their own cases
     const isAdminLike = Permissions.isAdminLevel(user);
     const isMyTeamCase = user.id === c.leader_id || c.source_cs_id === user.id;
-    const isMyCs = Logic.isLeaderRole(user) && (user.id === c.leader_id || DB.user(c.source_cs_id)?.leader_id === user.id);
+    const isMyCs = Logic.isLeaderRole(user) && (user.id === c.leader_id || user.id === c.source_cs_id || DB.user(c.source_cs_id)?.leader_id === user.id);
     
     const canEdit = isAdminLike || isMyTeamCase || isMyCs;
     const canProcessStage2 = canEdit && (Logic.isLeaderRole(user) || isAdminLike);
