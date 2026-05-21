@@ -653,7 +653,7 @@ body.app-ready #app { opacity: 1; transition: opacity 0.2s; }
 
 <!-- Demo persona switcher (remove in production) -->
 <div class="persona-bar" id="persona-bar">
-  <span class="lbl">AWARA </span>
+  <span class="lbl">Demo · Login as</span>
 </div>
 
 <div class="app" id="app"></div>
@@ -1921,11 +1921,11 @@ const Logic = {
 // ==================== UI HELPERS ====================
 function fmt(n) { 
   if (n === null || n === undefined) return '0';
-  return Number(n).toLocaleString('en-MY', { return Number(n).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); 
+  return Number(n).toLocaleString('en-MY', { maximumFractionDigits: 0 }); 
 }
 function fmtK(n) {
   if (!n || n === 0) return '0';
-  if (n >= 1000) return (n / 1000).toFixed(2).replace(/\.0$/, '') + 'k';
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
   return String(n);
 }
 function fmtRM(n) { return 'RM ' + fmt(n); }
@@ -2449,7 +2449,7 @@ const App = {
           <div><span style="color: var(--ink-3);">Pendapatan:</span> <strong>${fmtRM(c.jumlah_pendapatan)}</strong></div>
           <div><span style="color: var(--ink-3);">Potongan:</span> <strong>${fmtRM(c.jumlah_potongan)}</strong></div>
           <div><span style="color: var(--ink-3);">Gaji Bersih:</span> <strong style="color: var(--primary);">${fmtRM(c.gaji_bersih)}</strong></div>
-          <div><span style="color: var(--ink-3);">Peratus:</span> <strong style="color: var(--primary);">${c.gaji_bersih_pct.toFixed(2)}%</strong></div>
+          <div><span style="color: var(--ink-3);">Peratus:</span> <strong style="color: var(--primary);">${c.gaji_bersih_pct.toFixed(1)}%</strong></div>
         </div>
       </div>
       
@@ -3524,7 +3524,7 @@ const App = {
       rows.push([
         c.date_payslip, cs?.name || c.source_cs_id, leader?.name || c.leader_id,
         c.customer_name, c.ic, c.phone || '',
-        c.jumlah_pendapatan, c.jumlah_potongan, c.gaji_bersih, c.gaji_bersih_pct?.toFixed(2) + '%',
+        c.jumlah_pendapatan, c.jumlah_potongan, c.gaji_bersih, c.gaji_bersih_pct?.toFixed(1) + '%',
         pkgName(c.package_id) || '', c.loan_amount || '', c.tenor || '', c.bulanan?.toFixed(2) || '',
         c.case_type || '', STATUS_LABELS[c.status] || c.status,
         c.disburse_amount?.toFixed(2) || '', c.rejection_reason || ''
@@ -3700,7 +3700,7 @@ const App = {
     const pot = parseFloat(document.getElementById('f-potongan').value) || 0;
     const { bersih, pct } = calcGajiBersih(pend, pot);
     document.getElementById('f-bersih').textContent = 'RM ' + fmt(bersih);
-    document.getElementById('f-pct').textContent = pct.toFixed(2) + '%';
+    document.getElementById('f-pct').textContent = pct.toFixed(1) + '%';
   },
   
   // Check if IC already exists in system - show warning + offer to view
@@ -4303,14 +4303,28 @@ const App = {
       
       <div style="background: var(--primary-glow); padding: 12px; border-radius: 10px; margin-bottom: 14px;">
         <div style="display: flex; justify-content: space-between;">
-          <div><span style="font-size: 10px; color: var(--ink-3); text-transform: uppercase; font-weight: 700;">Gaji Bersih</span><br><strong id="ec-bersih" style="font-size: 18px; color: var(--primary);">RM ${c.gaji_bersih.toFixed(2)}</strong></div>
-          <div><span style="font-size: 10px; color: var(--ink-3); text-transform: uppercase; font-weight: 700;">Peratus</span><br><strong id="ec-pct" style="font-size: 18px; color: var(--primary);">${c.gaji_bersih_pct.toFixed(2)}%</strong></div>
+          <div><span style="font-size: 10px; color: var(--ink-3); text-transform: uppercase; font-weight: 700;">Gaji Bersih</span><br><strong id="ec-bersih" style="font-size: 18px; color: var(--primary);">RM ${fmt(c.gaji_bersih)}</strong></div>
+          <div><span style="font-size: 10px; color: var(--ink-3); text-transform: uppercase; font-weight: 700;">Peratus</span><br><strong id="ec-pct" style="font-size: 18px; color: var(--primary);">${c.gaji_bersih_pct.toFixed(1)}%</strong></div>
         </div>
       </div>
       
       <div class="form-group">
         <label>Date Payslip</label>
         <input type="date" id="ec-date" value="${c.date_payslip}">
+      </div>
+      
+      <div class="form-group">
+        <label>Reassign CS</label>
+        <select id="ec-cs">
+          ${allCS.map(u => `<option value="${u.id}" ${u.id === c.source_cs_id ? 'selected' : ''}>${u.name} (${ROLE_LABELS[u.role]})</option>`).join('')}
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label>Reassign Team Leader</label>
+        <select id="ec-leader">
+          ${allLeaders.map(u => `<option value="${u.id}" ${u.id === c.leader_id ? 'selected' : ''}>${u.name}</option>`).join('')}
+        </select>
       </div>
       
       ${c.package_id ? `
@@ -4327,8 +4341,8 @@ const App = {
     const pend = parseFloat(document.getElementById('ec-pend').value) || 0;
     const pot = parseFloat(document.getElementById('ec-pot').value) || 0;
     const { bersih, pct } = calcGajiBersih(pend, pot);
-    document.getElementById('ec-bersih').textContent = 'RM ' + bersih.toFixed(2);
-    document.getElementById('ec-pct').textContent = pct.toFixed(2) + '%';
+    document.getElementById('ec-bersih').textContent = 'RM ' + fmt(bersih);
+    document.getElementById('ec-pct').textContent = pct.toFixed(1) + '%';
   },
   
   saveEditCustomer(caseId) {
@@ -4339,6 +4353,8 @@ const App = {
     const pend = parseFloat(document.getElementById('ec-pend').value) || 0;
     const pot = parseFloat(document.getElementById('ec-pot').value) || 0;
     const date = document.getElementById('ec-date').value;
+    const csId = document.getElementById('ec-cs').value;
+    const leaderId = document.getElementById('ec-leader').value;
     const { bersih, pct } = calcGajiBersih(pend, pot);
     
     DB.updateCase(caseId, {
@@ -4349,7 +4365,8 @@ const App = {
       gaji_bersih: bersih,
       gaji_bersih_pct: pct,
       date_payslip: date,
-      
+      source_cs_id: csId,
+      leader_id: leaderId
     });
     
     toast('Customer info updated');
@@ -4848,7 +4865,7 @@ const App = {
           </svg>
           <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: var(--ink-3);">
             <span>Total 30 days: <strong style="color: var(--primary);">${days.reduce((s,d) => s + d.count, 0)} payslips</strong></span>
-            <span>Avg/day: <strong style="color: var(--primary);">${(days.reduce((s,d) => s + d.count, 0) / 30).toFixed(2)}</strong></span>
+            <span>Avg/day: <strong style="color: var(--primary);">${(days.reduce((s,d) => s + d.count, 0) / 30).toFixed(1)}</strong></span>
           </div>
         </div>
       </div>
