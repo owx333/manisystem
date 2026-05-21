@@ -8,11 +8,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-<!-- ====== FIREBASE ====== -->
+<!-- ============ FIREBASE SDK ============ -->
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+import { 
+  getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, 
+  onSnapshot, writeBatch, enableIndexedDbPersistence
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCQ9wGA6mSUxk38unlhZirAjQ_gLylGz7I",
@@ -24,89 +26,103 @@ const firebaseConfig = {
 };
 
 const fbApp = initializeApp(firebaseConfig);
-const auth = getAuth(fbApp);
-const db = getFirestore(fbApp);
+const fbDb = getFirestore(fbApp);
 
-// ---- Auth helpers ----
-window._fbLogin = async (email, password) => {
-  try {
-    await signInWithEmailAndPassword(auth, email, password);
-    const nameId = email.split('@')[0].toLowerCase();
-    const profile = (typeof SEED_USERS !== 'undefined' ? SEED_USERS : []).find(u => u.id === nameId);
-    if (!profile) return { ok: false, error: `Profile untuk "${nameId}" tidak dijumpai. Hubungi Wilson.` };
-    return { ok: true, user: { ...profile } };
-  } catch(e) {
-    let msg = 'Login gagal';
-    if (['auth/wrong-password','auth/invalid-credential','auth/invalid-login-credentials'].includes(e.code)) msg = 'Password salah';
-    else if (e.code === 'auth/user-not-found') msg = 'Email tidak dijumpai. Hubungi Wilson.';
-    else if (e.code === 'auth/too-many-requests') msg = 'Terlalu banyak percubaan. Cuba lagi sebentar.';
-    else msg = 'Login error: ' + e.code;
-    return { ok: false, error: msg };
+// Try to enable offline persistence (so app works without internet)
+try { 
+  await enableIndexedDbPersistence(fbDb); 
+  console.log("Firebase offline persistence enabled");
+} catch (e) { 
+  console.log("Persistence not available (likely multiple tabs open):", e.code); 
+}
+
+// ========== Cloud API exposed to main script ==========
+window.Cloud = {
+  enabled: true,
+  connected: false,
+  collections: ['users', 'cases', 'activities', 'customer_notes', 'seen'],
+  listeners: {},  // unsubscribe functions
+  
+  async setDoc(collectionName, docId, data) {
+    try {
+      // Sanitize: Firestore doesn't allow undefined values
+      const clean = JSON.parse(JSON.stringify(data));
+      await setDoc(doc(fbDb, collectionName, String(docId)), clean);
+      return true;
+    } catch (e) {
+      console.error("Cloud.setDoc error:", collectionName, docId, e);
+      return false;
+    }
+  },
+  
+  async deleteDoc(collectionName, docId) {
+    try {
+      await deleteDoc(doc(fbDb, collectionName, String(docId)));
+      return true;
+    } catch (e) {
+      console.error("Cloud.deleteDoc error:", e);
+      return false;
+    }
+  },
+  
+  async getAll(collectionName) {
+    try {
+      const snap = await getDocs(collection(fbDb, collectionName));
+      return snap.docs.map(d => d.data());
+    } catch (e) {
+      console.error("Cloud.getAll error:", collectionName, e);
+      return [];
+    }
+  },
+  
+  async getDoc(collectionName, docId) {
+    try {
+      const snap = await getDoc(doc(fbDb, collectionName, String(docId)));
+      return snap.exists() ? snap.data() : null;
+    } catch (e) {
+      console.error("Cloud.getDoc error:", e);
+      return null;
+    }
+  },
+  
+  // Batch upload (faster than many individual setDocs)
+  async batchSet(collectionName, items, keyField = 'id') {
+    try {
+      const batch = writeBatch(fbDb);
+      items.forEach(item => {
+        const cleanItem = JSON.parse(JSON.stringify(item));
+        batch.set(doc(fbDb, collectionName, String(cleanItem[keyField])), cleanItem);
+      });
+      await batch.commit();
+      return true;
+    } catch (e) {
+      console.error("Cloud.batchSet error:", e);
+      return false;
+    }
+  },
+  
+  // Listen for real-time changes
+  subscribe(collectionName, callback) {
+    if (this.listeners[collectionName]) this.listeners[collectionName]();
+    this.listeners[collectionName] = onSnapshot(collection(fbDb, collectionName), 
+      snap => {
+        const items = snap.docs.map(d => d.data());
+        callback(items);
+      },
+      err => console.error("Subscribe error:", collectionName, err)
+    );
+  },
+  
+  unsubscribeAll() {
+    Object.values(this.listeners).forEach(fn => fn && fn());
+    this.listeners = {};
   }
 };
 
-window._fbLogout = () => signOut(auth).catch(() => {});
-
-window._fbGetCurrentUser = () => new Promise(resolve => {
-  const unsub = onAuthStateChanged(auth, fbUser => {
-    unsub();
-    if (!fbUser) { resolve(null); return; }
-    const nameId = fbUser.email.split('@')[0].toLowerCase();
-    const profile = (typeof SEED_USERS !== 'undefined' ? SEED_USERS : []).find(u => u.id === nameId);
-    resolve(profile ? { ...profile } : null);
-  });
-});
-
-// ---- Data helpers ----
-window._fbLoadAll = async () => {
-  try {
-    const [casesSnap, actsSnap, metaNotesSnap, metaSeenSnap] = await Promise.all([
-      getDocs(collection(db, 'cases')),
-      getDocs(collection(db, 'activities')),
-      getDoc(doc(db, '_meta', 'notes')).catch(() => null),
-      getDoc(doc(db, '_meta', 'seen')).catch(() => null),
-    ]);
-    return {
-      cases: casesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-             .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)),
-      activities: actsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-      customer_notes: (metaNotesSnap && metaNotesSnap.exists()) ? metaNotesSnap.data() : {},
-      seen: (metaSeenSnap && metaSeenSnap.exists()) ? metaSeenSnap.data() : {},
-    };
-  } catch(e) {
-    console.error('Firestore load error:', e);
-    return { cases: [], activities: [], customer_notes: {}, seen: {} };
-  }
-};
-
-window._fbSetCase = (id, data) =>
-  setDoc(doc(db, 'cases', id), data).catch(e => console.error('Case write fail:', e));
-
-window._fbUpdateCase = (id, updates) =>
-  updateDoc(doc(db, 'cases', id), updates).catch(e => console.error('Case update fail:', e));
-
-window._fbUpdateActivity = (csId, date, updates) => {
-  const actId = csId + '_' + date;
-  setDoc(doc(db, 'activities', actId), { cs_id: csId, date, ...updates }, { merge: true })
-    .catch(e => console.error('Activity write fail:', e));
-};
-
-window._fbSetNote = (key, note) => {
-  const data = {};
-  data[key] = note || null;
-  setDoc(doc(db, '_meta', 'notes'), data, { merge: true })
-    .catch(e => console.error('Note write fail:', e));
-};
-
-window._fbMarkSeen = (userId, key) => {
-  const data = {};
-  data[userId + '_' + key] = Date.now();
-  setDoc(doc(db, '_meta', 'seen'), data, { merge: true })
-    .catch(e => console.error('Seen write fail:', e));
-};
-
-window._fbReady = true;
-console.log('✅ Firebase connected');
+window.Cloud.connected = true;
+console.log("Firebase Connected ✅ Project: awara-a8a89");
+// Notify main script
+window.dispatchEvent(new Event('cloud-ready'));
 </script>
 <style>
 :root {
@@ -140,7 +156,7 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--cream); c
 .screen.active { display: block; animation: fadeIn 0.3s ease; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-.top-bar { background: var(--cream); padding: 18px 20px 14px; border-bottom: 1px solid var(--border-2); position: sticky; top: 36px; z-index: 50; }
+.top-bar { background: var(--cream); padding: 18px 20px 14px; border-bottom: 1px solid var(--border-2); position: sticky; top: 0; z-index: 50; }
 .top-bar-row { display: flex; align-items: center; justify-content: space-between; }
 .logo { display: flex; align-items: center; gap: 10px; }
 .awara-mark { background: var(--primary); color: var(--accent); font-family: 'Archivo Black', sans-serif; font-weight: 900; font-size: 13px; padding: 5px 9px; border-radius: 5px; letter-spacing: 0.02em; line-height: 1; }
@@ -621,27 +637,177 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--cream); c
    ============================================================ */
 
 // ==================== CONSTANTS ====================
-const LOAN_PACKAGES = [
-  { id: 'YAYASAN_PERLIS', name: 'YAYASAN PERLIS', rate: 6.65, payout: 79, isHighPayout: true },
-  { id: 'KOBENA', name: 'KOBENA', rate: 9.99, payout: 77, isHighPayout: true },
-  { id: 'EVERGREEN', name: 'EVERGREEN', rate: 7.99, payout: 75, isHighPayout: true },
-  { id: 'KOBESI', name: 'KOBESI NORMAL', rate: 10, payout: 75, isHighPayout: true },
-  { id: 'YTAA', name: 'YTAA', rate: 7.99, payout: 70, isHighPayout: true, isBonus: true },
-  { id: 'KOMUJA', name: 'KOMUJA', rate: 7.99, payout: 70, isHighPayout: true, isBonus: true },
-  { id: 'PORTIER', name: 'PORTIER', rate: 6.99, payout: 68, isHighPayout: true },
-  { id: 'GIAT_MAJU', name: 'GIAT MAJU', rate: 9.5, payout: 50 },
-  { id: 'PELADANG', name: 'PELADANG', rate: 10, payout: 50 },
-  { id: 'KOSPEM', name: 'KOSPEM', rate: 12, payout: 50 },
-  { id: 'KOWARIS', name: 'KOWARIS', rate: 9.99, payout: 50 },
-  { id: 'KRISS', name: 'KRISS', rate: 8.99, payout: 50 },
-  { id: 'KOMAJU', name: 'KOMAJU', rate: 10.99, payout: 50 },
-  { id: 'KPPMB', name: 'KPPMB', rate: 10, payout: 50 },
+// Default packages used to seed Firestore on first run
+const DEFAULT_PACKAGES = [
+  { id: 'YAYASAN_PERLIS', name: 'YAYASAN PERLIS', rate: 6.65, payout: 79, type: 'normal', remarks: 'High payout · low rate', isBonus: false },
+  { id: 'KOBENA', name: 'KOBENA', rate: 9.99, payout: 77, type: 'normal', remarks: '', isBonus: false },
+  { id: 'EVERGREEN', name: 'EVERGREEN', rate: 7.99, payout: 75, type: 'normal', remarks: '', isBonus: false },
+  { id: 'KOBESI', name: 'KOBESI NORMAL', rate: 10, payout: 75, type: 'normal', remarks: '', isBonus: false },
+  { id: 'YTAA', name: 'YTAA', rate: 7.99, payout: 70, type: 'normal', remarks: 'Bonus: +1% extra commission', isBonus: true },
+  { id: 'KOMUJA', name: 'KOMUJA', rate: 7.99, payout: 70, type: 'normal', remarks: 'Bonus: +1% extra commission', isBonus: true },
+  { id: 'PORTIER', name: 'PORTIER', rate: 6.99, payout: 68, type: 'normal', remarks: '', isBonus: false },
+  { id: 'GIAT_MAJU', name: 'GIAT MAJU', rate: 9.5, payout: 50, type: 'normal', remarks: '', isBonus: false },
+  { id: 'PELADANG', name: 'PELADANG', rate: 10, payout: 50, type: 'normal', remarks: '', isBonus: false },
+  { id: 'KOSPEM', name: 'KOSPEM', rate: 12, payout: 50, type: 'normal', remarks: '', isBonus: false },
+  { id: 'KOWARIS', name: 'KOWARIS', rate: 9.99, payout: 50, type: 'normal', remarks: '', isBonus: false },
+  { id: 'KRISS', name: 'KRISS', rate: 8.99, payout: 50, type: 'normal', remarks: '', isBonus: false },
+  { id: 'KOMAJU', name: 'KOMAJU', rate: 10.99, payout: 50, type: 'normal', remarks: '', isBonus: false },
+  { id: 'KPPMB', name: 'KPPMB', rate: 10, payout: 50, type: 'normal', remarks: '', isBonus: false },
 ];
 
-const LOAN_AMOUNTS = [10000, 12000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000, 55000, 60000, 65000, 70000, 75000, 80000, 85000, 90000, 99000];
-const TENORS = [{m:36, l:'3 tahun'}, {m:60, l:'5 tahun'}, {m:84, l:'7 tahun'}, {m:120, l:'10 tahun'}, {m:144, l:'12 tahun'}];
+// Mutable - populated from DB.koperasi() on init
+let LOAN_PACKAGES = DEFAULT_PACKAGES.slice();
 
-// New status flow with Pending support
+function refreshPackages() {
+  const stored = DB.koperasi();
+  if (stored.length === 0) {
+    // First time - seed defaults to local
+    DB.set(DB.K.koperasi, DEFAULT_PACKAGES);
+    LOAN_PACKAGES = DEFAULT_PACKAGES.slice();
+    if (window.Cloud?.connected) {
+      DEFAULT_PACKAGES.forEach(p => window.Cloud.setDoc('koperasi', p.id, p));
+    }
+  } else {
+    LOAN_PACKAGES = stored;
+  }
+  // Derive isHighPayout dynamically (>= 65% payout)
+  LOAN_PACKAGES.forEach(p => { p.isHighPayout = p.payout >= 65; });
+}
+
+// ==================== SETTINGS (admin-configurable, no code needed) ====================
+const DEFAULT_SETTINGS = {
+  commission: {
+    cs_payslip: [
+      { min: 65, rate: 1.00 },
+      { min: 80, rate: 1.50 },
+      { min: 100, rate: 2.00 }
+    ],
+    cs_submit: [
+      { min: 7, rate: 15 },
+      { min: 15, rate: 20 },
+      { min: 25, rate: 30 },
+      { min: 40, rate: 50 }
+    ],
+    leader_kfi: [
+      { min: 170000, rate: 0.7 },
+      { min: 320000, rate: 0.9 },
+      { min: 540000, rate: 1.1 }
+    ],
+    solo_kfi: [
+      { min: 85000, rate: 0.7 },
+      { min: 160000, rate: 0.9 },
+      { min: 270000, rate: 1.1 }
+    ],
+    bonus_team: 70000,
+    bonus_solo: 35000,
+    bonus_rate: 1.0  // %
+  },
+  daily_targets: { calls: 250, whatsapp: 30, payslip: 3 },
+  performance: {
+    cs:     { low: 30, high: 80, excellent: 100 },
+    leader: { low: 100000, high: 320000, excellent: 540000 },
+    solo:   { low: 50000,  high: 160000, excellent: 270000 }
+  },
+  pending_reasons: [
+    'Customer minta tunggu',
+    'Kurang dokumen (slip gaji/IC)',
+    'Awaiting Koperasi response',
+    'Income tak cukup',
+    'CCRIS / CTOS issue',
+    'Customer pertimbangkan',
+    'Lain-lain'
+  ],
+  reject_reasons: [
+    'Customer tak berminat',
+    'Koperasi reject',
+    'Income tak cukup',
+    'CCRIS / CTOS issue',
+    'Customer hilang contact',
+    'Duplicate / Already with another agent',
+    'Lain-lain'
+  ],
+  loan_amounts: [10000, 12000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000, 55000, 60000, 65000, 70000, 75000, 80000, 85000, 90000, 99000],
+  tenors: [
+    { m: 36, l: '3 tahun' },
+    { m: 60, l: '5 tahun' },
+    { m: 84, l: '7 tahun' },
+    { m: 120, l: '10 tahun' },
+    { m: 144, l: '12 tahun' }
+  ],
+  branding: {
+    company_name: 'AWARA',
+    tagline: 'Sdn Bhd · Penang',
+    primary_color: '#0F5132',
+    accent_color: '#F5C518'
+  }
+};
+
+// Mutable - populated from DB.settings() on init via refreshSettings()
+let LOAN_AMOUNTS = DEFAULT_SETTINGS.loan_amounts.slice();
+let TENORS = DEFAULT_SETTINGS.tenors.slice();
+let CS_PAYSLIP_TIERS = [];
+let CS_SUBMIT_TIERS = [];
+let LEADER_KFI_TIERS = [];
+let SOLO_KFI_TIERS = [];
+let YTAA_KOMUJA_BONUS_TEAM = DEFAULT_SETTINGS.commission.bonus_team;
+let YTAA_KOMUJA_BONUS_SOLO = DEFAULT_SETTINGS.commission.bonus_solo;
+let BONUS_RATE_PCT = DEFAULT_SETTINGS.commission.bonus_rate;
+let DAILY_TARGETS = { ...DEFAULT_SETTINGS.daily_targets };
+let PERFORMANCE = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.performance));
+let PENDING_REASONS = DEFAULT_SETTINGS.pending_reasons.slice();
+let REJECT_REASONS = DEFAULT_SETTINGS.reject_reasons.slice();
+let BRANDING = { ...DEFAULT_SETTINGS.branding };
+
+function buildTierLabel(t, unit) {
+  if (unit === 'payslip') return `≥ ${t.min} payslip`;
+  if (unit === 'submit') return `≥ ${t.min} submit`;
+  if (unit === 'kfi') return `RM ${t.min.toLocaleString('en-MY')} disburse`;
+  return `${t.min}`;
+}
+
+function refreshSettings() {
+  const s = DB.settings();
+  if (!s || !s.commission) return;  // first run, use defaults
+  
+  // Sort tiers descending by min (first-match logic relies on this)
+  const sortDesc = arr => arr.slice().sort((a,b) => b.min - a.min);
+  
+  if (s.commission.cs_payslip?.length) {
+    CS_PAYSLIP_TIERS = sortDesc(s.commission.cs_payslip).map(t => ({ ...t, label: buildTierLabel(t, 'payslip') }));
+  }
+  if (s.commission.cs_submit?.length) {
+    CS_SUBMIT_TIERS = sortDesc(s.commission.cs_submit).map(t => ({ ...t, label: buildTierLabel(t, 'submit') }));
+  }
+  if (s.commission.leader_kfi?.length) {
+    LEADER_KFI_TIERS = sortDesc(s.commission.leader_kfi).map(t => ({ ...t, label: buildTierLabel(t, 'kfi') }));
+  }
+  if (s.commission.solo_kfi?.length) {
+    SOLO_KFI_TIERS = sortDesc(s.commission.solo_kfi).map(t => ({ ...t, label: buildTierLabel(t, 'kfi') }));
+  }
+  if (typeof s.commission.bonus_team === 'number') YTAA_KOMUJA_BONUS_TEAM = s.commission.bonus_team;
+  if (typeof s.commission.bonus_solo === 'number') YTAA_KOMUJA_BONUS_SOLO = s.commission.bonus_solo;
+  if (typeof s.commission.bonus_rate === 'number') BONUS_RATE_PCT = s.commission.bonus_rate;
+  
+  if (s.daily_targets) DAILY_TARGETS = { ...DAILY_TARGETS, ...s.daily_targets };
+  if (s.performance) PERFORMANCE = JSON.parse(JSON.stringify(s.performance));
+  if (s.pending_reasons?.length) PENDING_REASONS = s.pending_reasons.slice();
+  if (s.reject_reasons?.length) REJECT_REASONS = s.reject_reasons.slice();
+  if (s.loan_amounts?.length) LOAN_AMOUNTS = s.loan_amounts.slice();
+  if (s.tenors?.length) TENORS = s.tenors.slice();
+  if (s.branding) BRANDING = { ...BRANDING, ...s.branding };
+  
+  // Apply branding colors live
+  if (s.branding?.primary_color) document.documentElement.style.setProperty('--primary', s.branding.primary_color);
+  if (s.branding?.accent_color) document.documentElement.style.setProperty('--accent', s.branding.accent_color);
+}
+
+// Initialize defaults at load (will be overridden by refreshSettings after DB ready)
+CS_PAYSLIP_TIERS = DEFAULT_SETTINGS.commission.cs_payslip.slice().sort((a,b) => b.min - a.min).map(t => ({ ...t, label: buildTierLabel(t, 'payslip') }));
+CS_SUBMIT_TIERS = DEFAULT_SETTINGS.commission.cs_submit.slice().sort((a,b) => b.min - a.min).map(t => ({ ...t, label: buildTierLabel(t, 'submit') }));
+LEADER_KFI_TIERS = DEFAULT_SETTINGS.commission.leader_kfi.slice().sort((a,b) => b.min - a.min).map(t => ({ ...t, label: buildTierLabel(t, 'kfi') }));
+SOLO_KFI_TIERS = DEFAULT_SETTINGS.commission.solo_kfi.slice().sort((a,b) => b.min - a.min).map(t => ({ ...t, label: buildTierLabel(t, 'kfi') }));
+
+// Status flow (still hardcoded — changing this needs developer review)
 const STATUSES = ['new', 'contacted', 'proposed', 'submitted', 'approved', 'disbursed', 'pending', 'rejected'];
 const STATUS_LABELS = {
   new: 'New Payslip',
@@ -664,28 +830,6 @@ const STATUS_FLOW = {
   rejected:   ['new']
 };
 
-// Common pending reasons (suggestions)
-const PENDING_REASONS = [
-  'Customer minta tunggu',
-  'Kurang dokumen (slip gaji/IC)',
-  'Awaiting Koperasi response',
-  'Income tak cukup',
-  'CCRIS / CTOS issue',
-  'Customer pertimbangkan',
-  'Lain-lain'
-];
-
-const REJECT_REASONS = [
-  'Customer tak berminat',
-  'Koperasi reject',
-  'Income tak cukup',
-  'CCRIS / CTOS issue',
-  'Customer hilang contact',
-  'Duplicate / Already with another agent',
-  'Lain-lain'
-];
-
-// Calculate monthly installment (Malaysian flat rate)
 function calcBulanan(loanAmount, ratePct, tenorMonths) {
   if (!loanAmount || !ratePct || !tenorMonths) return 0;
   const years = tenorMonths / 12;
@@ -693,45 +837,12 @@ function calcBulanan(loanAmount, ratePct, tenorMonths) {
   return (loanAmount + totalInterest) / tenorMonths;
 }
 
-// Calculate net salary
 function calcGajiBersih(pendapatan, potongan) {
   const bersih = (pendapatan || 0) - (potongan || 0);
   const pct = pendapatan > 0 ? (bersih / pendapatan) * 100 : 0;
   return { bersih, pct };
 }
 
-// CS Commission Tiers
-const CS_PAYSLIP_TIERS = [
-  { min: 100, rate: 2.00, label: '>= 100 payslip' },
-  { min: 80, rate: 1.50, label: '>= 80 payslip' },
-  { min: 65, rate: 1.00, label: '>= 65 payslip' },
-];
-const CS_SUBMIT_TIERS = [
-  { min: 40, rate: 50, label: '>= 40 submit' },
-  { min: 25, rate: 30, label: '25-39 submit' },
-  { min: 15, rate: 20, label: '15-24 submit' },
-  { min: 7, rate: 15, label: '7-14 submit' },
-];
-
-// Leader Commission Tiers (Team)
-const LEADER_KFI_TIERS = [
-  { min: 540000, rate: 1.1, label: 'RM 540,000 disburse' },
-  { min: 320000, rate: 0.9, label: 'RM 320,000 disburse' },
-  { min: 170000, rate: 0.7, label: 'RM 170,000 disburse' },
-];
-// Solo Leader Tiers (half thresholds)
-const SOLO_KFI_TIERS = [
-  { min: 270000, rate: 1.1, label: 'RM 270,000 disburse' },
-  { min: 160000, rate: 0.9, label: 'RM 160,000 disburse' },
-  { min: 85000, rate: 0.7, label: 'RM 85,000 disburse' },
-];
-const YTAA_KOMUJA_BONUS_TEAM = 70000;
-const YTAA_KOMUJA_BONUS_SOLO = 35000;
-
-// Daily Targets
-const DAILY_TARGETS = { calls: 250, whatsapp: 30, payslip: 3 };
-
-// Role labels
 const ROLE_LABELS = { admin: 'Admin', leader: 'Team Leader', solo: 'Solo Leader', cs: 'CS' };
 
 // ==================== USERS (14 staff + 1 admin) ====================
@@ -954,7 +1065,8 @@ const DB = {
   K: { 
     users: 'awara_users', cases: 'awara_cases', activities: 'awara_activities', 
     session: 'awara_session', customer_notes: 'awara_customer_notes',
-    seen: 'awara_seen'
+    seen: 'awara_seen', koperasi: 'awara_koperasi', announcements: 'awara_announcements',
+    settings: 'awara_settings'
   },
   
   get(key, def = []) {
@@ -971,6 +1083,9 @@ const DB = {
     this.set(this.K.activities, generateSeedActivities());
     this.set(this.K.customer_notes, {});
     this.set(this.K.seen, {});
+    this.set(this.K.koperasi, DEFAULT_PACKAGES);
+    this.set(this.K.announcements, []);
+    this.set(this.K.settings, DEFAULT_SETTINGS);
   },
   
   // Users
@@ -982,6 +1097,8 @@ const DB = {
     if (idx === -1) return null;
     users[idx] = { ...users[idx], ...updates };
     this.set(this.K.users, users);
+    // Mirror to Firestore
+    if (window.Cloud?.connected) window.Cloud.setDoc('users', id, users[idx]);
     return users[idx];
   },
   
@@ -989,7 +1106,6 @@ const DB = {
   cases() { return this.get(this.K.cases); },
   caseById(id) { return this.cases().find(c => c.id === id); },
   
-  // Find cases by IC (for duplicate check + customer history)
   casesByIC(ic) {
     if (!ic) return [];
     const cleanIC = ic.replace(/[-\s]/g, '').toLowerCase();
@@ -998,21 +1114,47 @@ const DB = {
     );
   },
   
+  // Add a case. If IC already exists, mark as duplicate + add remark to original.
+  // Duplicates are tracked but don't count toward CS payslip tier.
   addCase(data) {
     const cases = this.cases();
     const user = Auth.current();
+    
+    // Check duplicate by IC
+    const existing = data.ic ? this.casesByIC(data.ic) : [];
+    const isDuplicate = existing.length > 0;
+    const originalCase = isDuplicate ? existing[0] : null;
+    
     const newCase = { 
       id: 'c' + Date.now(), 
       ...data,
+      is_duplicate: isDuplicate,
+      duplicate_of: isDuplicate ? originalCase.id : null,
+      original_keyer: isDuplicate ? originalCase.source_cs_id : data.source_cs_id,
       audit_log: [{
         date: new Date().toISOString(),
         by: user?.id || 'system',
-        action: 'created',
+        action: isDuplicate ? 'created_duplicate' : 'created',
         changes: { status: { from: null, to: data.status || 'new' } }
       }]
     };
     cases.unshift(newCase);
     this.set(this.K.cases, cases);
+    if (window.Cloud?.connected) window.Cloud.setDoc('cases', newCase.id, newCase);
+    
+    // If duplicate, add remark to ORIGINAL case for tracking
+    if (isDuplicate && originalCase) {
+      const today = new Date().toISOString().slice(0,10);
+      const remarks = (originalCase.remarks || []).slice();
+      const csName = this.user(data.source_cs_id)?.name || data.source_cs_id;
+      remarks.push({
+        date: today,
+        by: user?.id || 'system',
+        text: `Duplicate keyed by CS ${csName} (Case ${newCase.id})`
+      });
+      this.updateCase(originalCase.id, { remarks });
+    }
+    
     return newCase;
   },
   
@@ -1023,7 +1165,6 @@ const DB = {
     const before = cases[idx];
     const user = Auth.current();
     
-    // Build audit entry for actually changed fields (skip large/timestamp fields)
     const skipFields = ['audit_log', 'remarks'];
     const changes = {};
     Object.keys(updates).forEach(k => {
@@ -1046,10 +1187,11 @@ const DB = {
     
     cases[idx] = { ...before, ...updates };
     this.set(this.K.cases, cases);
+    if (window.Cloud?.connected) window.Cloud.setDoc('cases', id, cases[idx]);
     return cases[idx];
   },
   
-  // Activities (daily targets)
+  // Activities
   activities() { return this.get(this.K.activities); },
   todayActivity(csId) {
     const today = new Date().toISOString().slice(0,10);
@@ -1066,9 +1208,13 @@ const DB = {
       acts.push({ cs_id: csId, date: today, calls: 0, whatsapp: 0, payslip: 0, ...updates });
     }
     this.set(this.K.activities, acts);
+    // Mirror to Firestore (composite key: cs_id_date)
+    const actId = `${csId}_${today}`;
+    const actDoc = acts.find(a => a.cs_id === csId && a.date === today);
+    if (window.Cloud?.connected && actDoc) window.Cloud.setDoc('activities', actId, {...actDoc, id: actId});
   },
   
-  // Customer-level notes (keyed by IC, persists across cases)
+  // Customer notes
   customerNotes() { return this.get(this.K.customer_notes, {}); },
   customerNote(ic) {
     if (!ic) return '';
@@ -1082,9 +1228,10 @@ const DB = {
     if (note) notes[key] = note;
     else delete notes[key];
     this.set(this.K.customer_notes, notes);
+    if (window.Cloud?.connected) window.Cloud.setDoc('customer_notes', key, { ic: key, note });
   },
   
-  // Tracking what user has seen (for notification badges)
+  // Seen tracking
   seen() { return this.get(this.K.seen, {}); },
   markSeen(userId, key) {
     const seen = this.seen();
@@ -1094,6 +1241,108 @@ const DB = {
   },
   lastSeen(userId, key) {
     return this.seen()[userId]?.[key] || 0;
+  },
+  
+  // Koperasi packages (admin-managed CRUD)
+  koperasi() { return this.get(this.K.koperasi, []); },
+  koperasiById(id) { return this.koperasi().find(p => p.id === id); },
+  addKoperasi(data) {
+    const list = this.koperasi();
+    let id = data.id || (data.name || '').toUpperCase().replace(/[^A-Z0-9]/g, '_');
+    if (!id) return null;
+    // Ensure unique id
+    let suffix = 0;
+    let finalId = id;
+    while (list.some(p => p.id === finalId)) {
+      suffix++;
+      finalId = id + '_' + suffix;
+    }
+    const pkg = { ...data, id: finalId };
+    pkg.isHighPayout = (pkg.payout || 0) >= 65;
+    list.push(pkg);
+    this.set(this.K.koperasi, list);
+    if (window.Cloud?.connected) window.Cloud.setDoc('koperasi', finalId, pkg);
+    refreshPackages();
+    return pkg;
+  },
+  updateKoperasi(id, updates) {
+    const list = this.koperasi();
+    const idx = list.findIndex(p => p.id === id);
+    if (idx === -1) return null;
+    list[idx] = { ...list[idx], ...updates };
+    list[idx].isHighPayout = (list[idx].payout || 0) >= 65;
+    this.set(this.K.koperasi, list);
+    if (window.Cloud?.connected) window.Cloud.setDoc('koperasi', id, list[idx]);
+    refreshPackages();
+    return list[idx];
+  },
+  deleteKoperasi(id) {
+    const list = this.koperasi().filter(p => p.id !== id);
+    this.set(this.K.koperasi, list);
+    if (window.Cloud?.connected) window.Cloud.deleteDoc('koperasi', id);
+    refreshPackages();
+  },
+  
+  // Announcements
+  announcements() {
+    return this.get(this.K.announcements, [])
+      .sort((a,b) => (b.created_at || b.date || '').localeCompare(a.created_at || a.date || ''));
+  },
+  addAnnouncement({ title, body, expires_at }) {
+    const user = Auth.current();
+    const ann = {
+      id: 'ann_' + Date.now(),
+      title, body,
+      posted_by: user?.id || 'system',
+      date: new Date().toISOString().slice(0,10),
+      created_at: new Date().toISOString(),
+      expires_at: expires_at || null
+    };
+    const list = this.get(this.K.announcements, []);
+    list.unshift(ann);
+    this.set(this.K.announcements, list);
+    if (window.Cloud?.connected) window.Cloud.setDoc('announcements', ann.id, ann);
+    return ann;
+  },
+  deleteAnnouncement(id) {
+    const list = this.announcements().filter(a => a.id !== id);
+    this.set(this.K.announcements, list);
+    if (window.Cloud?.connected) window.Cloud.deleteDoc('announcements', id);
+  },
+  
+  // Settings (single doc with all admin-configurable values)
+  settings() { 
+    const s = this.get(this.K.settings, null); 
+    // Deep merge with defaults so missing keys fall back
+    if (!s) return JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+    return {
+      ...DEFAULT_SETTINGS,
+      ...s,
+      commission: { ...DEFAULT_SETTINGS.commission, ...(s.commission || {}) },
+      daily_targets: { ...DEFAULT_SETTINGS.daily_targets, ...(s.daily_targets || {}) },
+      performance: { ...DEFAULT_SETTINGS.performance, ...(s.performance || {}) },
+      branding: { ...DEFAULT_SETTINGS.branding, ...(s.branding || {}) }
+    };
+  },
+  updateSettings(patch) {
+    const current = this.settings();
+    const merged = {
+      ...current,
+      ...patch,
+      commission: { ...current.commission, ...(patch.commission || {}) },
+      daily_targets: { ...current.daily_targets, ...(patch.daily_targets || {}) },
+      performance: { ...current.performance, ...(patch.performance || {}) },
+      branding: { ...current.branding, ...(patch.branding || {}) }
+    };
+    this.set(this.K.settings, merged);
+    if (window.Cloud?.connected) window.Cloud.setDoc('settings', 'main', { id: 'main', ...merged });
+    refreshSettings();
+    return merged;
+  },
+  resetSettingsToDefault() {
+    this.set(this.K.settings, DEFAULT_SETTINGS);
+    if (window.Cloud?.connected) window.Cloud.setDoc('settings', 'main', { id: 'main', ...DEFAULT_SETTINGS });
+    refreshSettings();
   },
   
   // Session
@@ -1149,12 +1398,12 @@ const Logic = {
     return this.allCases(opts).filter(c => c.date_payslip && c.date_payslip.startsWith(ym));
   },
   
-  // Cases submitted in current month (by date_submitted)
+  // Cases submitted in current month (by date_submitted only - including those later rejected/disbursed)
+  // This is the correct KPI logic: if it was submitted in May, it counts for May KPI regardless of later status
   monthlySubmitCases(opts = {}) {
     const ym = this.currentMonthYM();
     return this.allCases(opts).filter(c => 
-      c.date_submitted && c.date_submitted.startsWith(ym) && 
-      this.KPI_STATUSES.includes(c.status)
+      c.date_submitted && c.date_submitted.startsWith(ym)
     );
   },
   
@@ -1181,32 +1430,70 @@ const Logic = {
     return this.allCases(opts).filter(c => c.status === 'pending');
   },
   
-  // CS stats - cross-month accurate
+  // Performance level for a user this month (low / normal / high / excellent)
+  performanceLevel(userId, role) {
+    const u = DB.user(userId);
+    if (!u) return 'normal';
+    const isLeader = u.role === 'leader' || u.role === 'solo';
+    const isSolo = u.role === 'solo';
+    
+    if (isLeader) {
+      const stats = this.leaderStats(userId);
+      const threshold = isSolo ? PERFORMANCE.solo : PERFORMANCE.leader;
+      const kfi = stats.kfiAmount;
+      if (kfi >= threshold.excellent) return 'excellent';
+      if (kfi >= threshold.high) return 'high';
+      if (kfi < threshold.low) return 'low';
+      return 'normal';
+    } else {
+      const stats = this.csStats(userId);
+      const t = PERFORMANCE.cs;
+      const ps = stats.total;
+      if (ps >= t.excellent) return 'excellent';
+      if (ps >= t.high) return 'high';
+      if (ps < t.low) return 'low';
+      return 'normal';
+    }
+  },
+  
+  // Get active announcements (not expired)
+  activeAnnouncements() {
+    const today = new Date().toISOString().slice(0,10);
+    return DB.announcements().filter(a => !a.expires_at || a.expires_at >= today);
+  },
+  
+  // CS stats - cross-month accurate, excludes duplicates from payslip count
   csStats(csId) {
     const payslipCases = this.monthlyPayslipCases({ csId });
     const submitCases = this.monthlySubmitCases({ csId });
     const disburseCases = this.monthlyDisburseCases({ csId });
     const rejectCases = this.monthlyRejectCases({ csId });
     
-    const total = payslipCases.length;
-    const submitted = submitCases.length;
-    const disbursed = disburseCases.length;
-    const rejected = rejectCases.length;
-    const newCount = payslipCases.filter(c => c.status === 'new').length;
-    const inProgress = payslipCases.filter(c => ['contacted', 'proposed'].includes(c.status)).length;
-    const pending = this.pendingCases({ csId }).length;
-    const disburseAmount = disburseCases.reduce((s,c) => s + (c.disburse_amount || 0), 0);
-    const lostAmount = rejectCases.reduce((s,c) => s + (c.loan_amount || 0), 0);
+    // Duplicate payslips don't count toward tier
+    const validPayslip = payslipCases.filter(c => !c.is_duplicate);
+    const duplicates = payslipCases.filter(c => c.is_duplicate);
+    
+    const total = validPayslip.length;
+    const totalDuplicates = duplicates.length;
+    const submitted = submitCases.filter(c => !c.is_duplicate).length;
+    const disbursed = disburseCases.filter(c => !c.is_duplicate).length;
+    const rejected = rejectCases.filter(c => !c.is_duplicate).length;
+    const newCount = validPayslip.filter(c => c.status === 'new').length;
+    const inProgress = validPayslip.filter(c => ['contacted', 'proposed'].includes(c.status)).length;
+    const pending = this.pendingCases({ csId }).filter(c => !c.is_duplicate).length;
+    const disburseAmount = disburseCases.filter(c => !c.is_duplicate).reduce((s,c) => s + (c.disburse_amount || 0), 0);
+    const lostAmount = rejectCases.filter(c => !c.is_duplicate).reduce((s,c) => s + (c.loan_amount || 0), 0);
     
     return { 
-      total, submitted, inProgress, disbursed, rejected, newCount, pending,
+      total, totalDuplicates,
+      submitted, inProgress, disbursed, rejected, newCount, pending,
       disburseAmount, lostAmount, 
-      cases: payslipCases,  // for display: current month's payslips
-      allCases: this.allCases({ csId })  // for full view if needed
+      cases: payslipCases,
+      allCases: this.allCases({ csId })
     };
   },
   
-  // Leader stats - cross-month accurate
+  // Leader stats - cross-month accurate, excludes duplicates from payslip count
   leaderStats(leaderId) {
     const leader = DB.user(leaderId);
     const teamMembers = DB.users().filter(u => u.leader_id === leaderId);
@@ -1216,14 +1503,16 @@ const Logic = {
     const disburseCases = this.monthlyDisburseCases({ leaderId });
     const rejectCases = this.monthlyRejectCases({ leaderId });
     
-    const total = payslipCases.length;
-    const submitted = submitCases.length;
-    const disbursed = disburseCases.length;
-    const newCount = payslipCases.filter(c => c.status === 'new').length;
+    const validPayslip = payslipCases.filter(c => !c.is_duplicate);
+    const total = validPayslip.length;
+    const submitted = submitCases.filter(c => !c.is_duplicate).length;
+    const disbursed = disburseCases.filter(c => !c.is_duplicate).length;
+    const newCount = validPayslip.filter(c => c.status === 'new').length;
+    // KFI is on the disbursing leader (not original CS), so include all disbursed by this leader
     const kfiAmount = disburseCases.reduce((s,c) => s + (c.disburse_amount || 0), 0);
-    const loanSubmission = submitCases.reduce((s,c) => s + (c.loan_amount || 0), 0);
-    const rejected = rejectCases.length;
-    const lostAmount = rejectCases.reduce((s,c) => s + (c.loan_amount || 0), 0);
+    const loanSubmission = submitCases.filter(c => !c.is_duplicate).reduce((s,c) => s + (c.loan_amount || 0), 0);
+    const rejected = rejectCases.filter(c => !c.is_duplicate).length;
+    const lostAmount = rejectCases.filter(c => !c.is_duplicate).reduce((s,c) => s + (c.loan_amount || 0), 0);
     
     const bonusCases = disburseCases.filter(c => ['YTAA','KOMUJA'].includes(c.package_id));
     const bonusKfi = bonusCases.reduce((s,c) => s + (c.disburse_amount || 0), 0);
@@ -1313,7 +1602,7 @@ const Logic = {
     }
     
     const bonusThreshold = stats.isSolo ? YTAA_KOMUJA_BONUS_SOLO : YTAA_KOMUJA_BONUS_TEAM;
-    const bonusCom = stats.bonusKfi >= bonusThreshold ? stats.bonusKfi * 0.01 : 0;
+    const bonusCom = stats.bonusKfi >= bonusThreshold ? stats.bonusKfi * (BONUS_RATE_PCT / 100) : 0;
     
     return {
       kfiCom, bonusCom, total: kfiCom + bonusCom,
@@ -1626,6 +1915,10 @@ const App = {
       case 'admin-staff': content = this.renderAdminStaff(user); break;
       case 'admin-customers': content = this.renderAdminCustomers(user); break;
       case 'admin-weekly': content = this.renderAdminWeekly(user); break;
+      case 'admin-koperasi': content = this.renderAdminKoperasi(user); break;
+      case 'admin-announcements': content = this.renderAdminAnnouncements(user); break;
+      case 'admin-export': content = this.renderAdminExport(user); break;
+      case 'admin-settings': content = this.renderAdminSettings(user); break;
       case 'add-case': content = this.renderAddCase(user); break;
       default: content = this.renderCSDashboard(user);
     }
@@ -1650,11 +1943,20 @@ const App = {
   
   renderPersonaBar() {
     const bar = document.getElementById('persona-bar');
+    const isDev = location.search.includes('dev=1');
+    if (!isDev) {
+      // Production mode: hide persona switcher entirely
+      bar.style.display = 'none';
+      bar.innerHTML = '';
+      return;
+    }
+    bar.style.display = '';
     const cur = Auth.current();
     const showcase = ['anis', 'faizah', 'atirah', 'wilson'];
-    bar.innerHTML = '<span class="lbl">Demo · Login as</span>' + 
+    bar.innerHTML = '<span class="lbl">DEV · Switch as</span>' + 
       showcase.map(id => {
         const u = DB.user(id);
+        if (!u) return '';
         const active = cur && cur.id === id ? 'active' : '';
         return `<button class="${active}" onclick="App.demoSwitch('${id}')">${u.name} · ${u.role}</button>`;
       }).join('') + 
@@ -1663,13 +1965,10 @@ const App = {
   },
   
   resetDemo() {
-    if (!confirm('Reset all demo data? (Cases, activities, sessions akan reset balik)')) return;
-    localStorage.removeItem(DB.K.users);
-    localStorage.removeItem(DB.K.cases);
-    localStorage.removeItem(DB.K.activities);
-    localStorage.removeItem(DB.K.session);
+    if (!confirm('Reset all data? (Cases, activities, sessions akan reset balik)')) return;
+    localStorage.clear();
     DB.seed(true);
-    DB.setSession('anis');
+    DB.setSession('wilson');
     this.state.currentScreen = 'login';
     this.render();
     toast('✓ Demo data reset');
@@ -1784,8 +2083,9 @@ const App = {
           <span class="case-status new">New</span>
         </div>
         <div style="display: flex; gap: 6px; margin-top: 10px;">
-          <button onclick="event.stopPropagation(); App.openProcessCase('${c.id}')" style="flex: 2; background: var(--primary); color: var(--accent); border: none; padding: 10px; border-radius: 10px; font-family: inherit; font-weight: 800; font-size: 12px; cursor: pointer; letter-spacing: 0.05em; text-transform: uppercase;">+ Add Loan Package (Stage 2)</button>
-          <button onclick="event.stopPropagation(); App.viewCase('${c.id}')" style="flex: 1; background: var(--cream); color: var(--ink-2); border: 1px solid var(--border); padding: 10px; border-radius: 10px; font-family: inherit; font-weight: 700; font-size: 12px; cursor: pointer;">View</button>
+          <button onclick="event.stopPropagation(); App.updateCaseStatus('${c.id}', 'contacted')" style="flex: 1; background: var(--primary); color: var(--accent); border: none; padding: 10px; border-radius: 10px; font-family: inherit; font-weight: 800; font-size: 12px; cursor: pointer; letter-spacing: 0.05em; text-transform: uppercase;">→ Mark Contacted</button>
+          <button onclick="event.stopPropagation(); App.openProcessCase('${c.id}')" style="flex: 1; background: var(--accent); color: var(--primary-dark); border: none; padding: 10px; border-radius: 10px; font-family: inherit; font-weight: 800; font-size: 12px; cursor: pointer; letter-spacing: 0.05em; text-transform: uppercase;">+ Propose Package</button>
+          <button onclick="event.stopPropagation(); App.viewCase('${c.id}')" style="flex: 0 0 auto; background: var(--cream); color: var(--ink-2); border: 1px solid var(--border); padding: 10px 12px; border-radius: 10px; font-family: inherit; font-weight: 700; font-size: 12px; cursor: pointer;">View</button>
         </div>
       </div>
     `;
@@ -1798,12 +2098,14 @@ const App = {
     const recentCases = stats.cases.slice().sort((a,b) => b.date_payslip.localeCompare(a.date_payslip)).slice(0, 5);
     const teamLeader = user.role === 'cs' ? DB.user(user.leader_id) : null;
     
-    return this.topBar(user) + this.monthPill() + `
+    return this.topBar(user) + this.monthPill() + 
+      this.renderAnnouncementBanner() + 
+      this.renderPerformanceBanner(user) + `
       <div class="kpi-grid">
         <div class="kpi-card featured">
           <div class="label">Payslip Collected · This Month</div>
           <div class="value">${stats.total}</div>
-          <div class="sub">${stats.disbursed} disbursed · ${stats.newCount} not yet processed</div>
+          <div class="sub">${stats.disbursed} disbursed · ${stats.newCount} not yet processed${stats.totalDuplicates ? ` · ${stats.totalDuplicates} dup (excluded)` : ''}</div>
         </div>
         <div class="kpi-card success">
           <div class="label">Disbursed</div>
@@ -2035,8 +2337,14 @@ const App = {
       `).join('');
     
     showModal(`
-      <div class="modal-title">${c.customer_name}</div>
+      <div class="modal-title">${c.customer_name} ${c.is_duplicate ? '<span style="background: var(--warning-bg); color: var(--warning); font-size: 10px; padding: 3px 8px; border-radius: 8px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 800; vertical-align: middle;">Duplicate</span>' : ''}</div>
       <div class="modal-sub">IC: ${c.ic || '—'} · Phone: ${c.phone || '—'}</div>
+      ${c.is_duplicate ? `
+        <div class="info-banner" style="background: #FFF0E6; border-left-color: #E67E22; color: #8B4513; margin-bottom: 12px;">
+          <strong>This is a duplicate.</strong> Customer was first keyed by CS <strong>${DB.user(c.original_keyer)?.name || c.original_keyer}</strong>. This case is recorded but <strong>does not count</strong> toward CS payslip tier.
+          ${c.duplicate_of ? `<br><a onclick="App.viewCase('${c.duplicate_of}')" style="color: var(--accent-deep); font-weight: 700; cursor: pointer; text-decoration: underline;">View Original Case →</a>` : ''}
+        </div>
+      ` : ''}
       
       <div style="background: var(--cream-2); border-radius: 12px; padding: 14px; margin: 14px 0; border: 1px solid var(--border-2);">
         <div style="font-size: 10px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px;">Stage 1 · Payslip Info <span class="stage-pill s1">CS: ${csUser?.name || c.source_cs_id}</span></div>
@@ -2051,7 +2359,10 @@ const App = {
       </div>
       
       ${canProcessStage2 && !stage2Done ? `
-        <button class="submit-btn" style="margin-bottom: 14px; background: var(--accent); color: var(--primary-dark); font-size: 13px;" onclick="App.openProcessCase('${c.id}')">+ Process Case · Add Loan Package (Stage 2)</button>
+        ${c.status === 'new' ? `
+          <button class="submit-btn" style="margin-bottom: 8px; background: var(--primary); color: var(--accent); font-size: 13px;" onclick="App.updateCaseStatus('${c.id}', 'contacted')">→ Mark as Contacted (Call customer first)</button>
+        ` : ''}
+        <button class="submit-btn" style="margin-bottom: 14px; background: var(--accent); color: var(--primary-dark); font-size: 13px;" onclick="App.openProcessCase('${c.id}')">+ Propose Package (Stage 2)</button>
       ` : ''}
       
       ${stage2Done ? `
@@ -2065,6 +2376,7 @@ const App = {
             <div><span style="color: var(--ink-3);">Case Type:</span> <strong style="text-transform: capitalize;">${c.case_type || '—'}</strong></div>
             <div><span style="color: var(--ink-3);">Rate:</span> <strong>${pkg?.rate || '—'}%</strong></div>
             ${c.date_contacted ? `<div><span style="color: var(--ink-3);">Contacted:</span> <strong>${new Date(c.date_contacted).toLocaleDateString('en-MY')}</strong></div>` : ''}
+            ${c.date_proposed ? `<div><span style="color: var(--ink-3);">Proposed:</span> <strong>${new Date(c.date_proposed).toLocaleDateString('en-MY')}</strong></div>` : ''}
             ${c.date_submitted ? `<div><span style="color: var(--ink-3);">Submitted:</span> <strong>${new Date(c.date_submitted).toLocaleDateString('en-MY')}</strong></div>` : ''}
             ${c.date_approved ? `<div><span style="color: var(--ink-3);">Approved:</span> <strong>${new Date(c.date_approved).toLocaleDateString('en-MY')}</strong></div>` : ''}
             ${c.approved_amount && c.approved_amount !== c.loan_amount ? `<div><span style="color: var(--ink-3);">Approved Amt:</span> <strong>${fmtRM(c.approved_amount)}</strong></div>` : ''}
@@ -2264,9 +2576,14 @@ const App = {
     const isEdit = c.package_id !== null;
     
     showModal(`
-      <div class="modal-title">${isEdit ? 'Edit' : 'Process'} Case · Stage 2</div>
+      <div class="modal-title">${isEdit ? 'Edit Loan Details' : 'Propose Package'} · Stage 2</div>
       <div class="modal-sub">${c.customer_name} · Gaji Bersih: ${fmtRM(c.gaji_bersih)} (${c.gaji_bersih_pct.toFixed(0)}%)</div>
       
+      ${!isEdit && c.status === 'new' ? `
+        <div class="info-banner info" style="margin-bottom: 14px;">
+          <strong>Stage 2 flow:</strong> Contact customer first, faham keperluan dia, baru fill ini. Status akan tukar ke <strong>Proposed</strong>.
+        </div>
+      ` : ''}
       <div class="form-group">
         <label>Pakej</label>
         <select id="pc-pkg" onchange="App.recalcBulanan()">
@@ -2356,14 +2673,20 @@ const App = {
       case_type: type
     };
     
-    // If still "new", advance to "contacted"
-    if (c.status === 'new') {
-      updates.status = 'contacted';
-      updates.date_contacted = new Date().toISOString().slice(0,10);
+    const today = new Date().toISOString().slice(0,10);
+    // Filling Stage 2 = Proposing package = status moves to 'proposed'
+    // Status logic:
+    //   new → proposed (also auto-set date_contacted if missing)
+    //   contacted → proposed
+    //   proposed/later → keep current status (just editing loan details)
+    if (c.status === 'new' || c.status === 'contacted') {
+      updates.status = 'proposed';
+      updates.date_proposed = today;
+      if (!c.date_contacted) updates.date_contacted = today;
     }
     
     DB.updateCase(caseId, updates);
-    toast('Stage 2 saved');
+    toast('Package proposed · Stage 2 saved');
     hideModal();
     this.render();
   },
@@ -2373,6 +2696,20 @@ const App = {
     if (!c) return;
     
     // Open status-specific form based on target status
+    if (newStatus === 'proposed') {
+      // PROPOSED requires filling in loan package (Stage 2 form)
+      // If already has package, just update status; otherwise open form
+      if (c.package_id) {
+        const today = new Date().toISOString().slice(0,10);
+        DB.updateCase(caseId, { status: 'proposed', date_proposed: c.date_proposed || today });
+        hideModal();
+        toast('Status: Proposed');
+        this.render();
+      } else {
+        return this.openProcessCase(caseId);
+      }
+      return;
+    }
     if (newStatus === 'submitted') return this.openSubmitForm(caseId);
     if (newStatus === 'approved') return this.openApproveForm(caseId);
     if (newStatus === 'disbursed') return this.openDisburseForm(caseId);
@@ -2757,7 +3094,9 @@ const App = {
     // New cases needing leader to process
     const newCases = stats.cases.filter(c => c.status === 'new').slice(0, 3);
     
-    return this.topBar(user) + this.monthPill() + `
+    return this.topBar(user) + this.monthPill() + 
+      this.renderAnnouncementBanner() + 
+      this.renderPerformanceBanner(user) + `
       <div class="kpi-grid">
         <div class="kpi-card featured">
           <div class="label">Team KFI · ${user.role === 'solo' ? 'Solo' : 'Total'}</div>
@@ -2908,7 +3247,8 @@ const App = {
     const awards = Logic.awards();
     const teamRank = Logic.teamRanking();
     
-    return this.topBar(user, 'Boss Dashboard') + this.monthPill() + `
+    return this.topBar(user, 'Boss Dashboard') + this.monthPill() + 
+      this.renderAnnouncementBanner() + `
       <div class="kpi-grid">
         <div class="kpi-card featured">
           <div class="label">Total Loan Submission</div>
@@ -3002,21 +3342,25 @@ const App = {
       
       <div class="section-header"><div class="section-title">Quick Actions</div></div>
       <div style="padding: 0 20px;">
-        <div class="qa-card" onclick="App.goto('admin-staff')">
-          <div class="qa-title">Manage Staff & Roles</div>
-          <div class="qa-sub">Promote CS → Leader · Reassign teams · Reset password</div>
+        <div class="qa-card" onclick="App.goto('admin-rankings')">
+          <div class="qa-title">Full Rankings · CS & Teams</div>
+          <div class="qa-sub">See top performers · monthly leaderboard</div>
         </div>
-        <div class="qa-card" onclick="App.quickAction('export-csv')">
-          <div class="qa-title">Export Monthly Data (CSV)</div>
-          <div class="qa-sub">All cases · all teams · open in Excel</div>
+        <div class="qa-card" onclick="App.goto('admin-export')">
+          <div class="qa-title">Export Reports (Excel/CSV)</div>
+          <div class="qa-sub">Per-staff performance · submitted cases · disbursement list</div>
         </div>
-        <div class="qa-card" onclick="App.quickAction('weekly-report')">
+        <div class="qa-card" onclick="App.goto('admin-weekly')">
           <div class="qa-title">Weekly Team Report</div>
-          <div class="qa-sub">Phase 2 · auto-generate weekly summary</div>
+          <div class="qa-sub">KFI · Calling · Payslip · Closing · Potential</div>
         </div>
-        <div class="qa-card" onclick="App.quickAction('salary')">
-          <div class="qa-title">Salary & Payslip Generation</div>
-          <div class="qa-sub" style="color: var(--accent-deep); font-weight: 700;">Phase 3 · coming soon</div>
+        <div class="qa-card" onclick="App.goto('admin-announcements')">
+          <div class="qa-title">Post Announcement</div>
+          <div class="qa-sub">Send notice to entire team · shows on every dashboard</div>
+        </div>
+        <div class="qa-card" onclick="App.goto('admin-settings')" style="border: 2px solid var(--accent); background: linear-gradient(135deg, #FFF8E8 0%, var(--cream-2) 100%);">
+          <div class="qa-title">⚙️ System Settings</div>
+          <div class="qa-sub">Commission tiers · Daily targets · Performance thresholds · Reasons · Branding</div>
         </div>
       </div>
     `;
@@ -3219,25 +3563,28 @@ const App = {
       return;
     }
     
-    // Found duplicates - show warning + offer to view
+    // Found duplicates - show warning + multiple options
     const customer = existing[0];
     const note = DB.customerNote(ic);
+    const originalCS = DB.user(customer.source_cs_id);
+    const originalLeader = DB.user(customer.leader_id);
     warn.style.display = 'block';
     warn.innerHTML = `
       <div style="background: var(--warning-bg); border: 1px solid var(--warning); border-radius: 12px; padding: 12px 14px;">
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-          <strong style="color: var(--warning); font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em;">Duplicate IC Detected</strong>
-        </div>
-        <div style="font-size: 13px; color: var(--ink); margin-bottom: 4px;">
+        <strong style="color: var(--warning); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 800;">⚠ Duplicate IC Detected</strong>
+        <div style="font-size: 13px; color: var(--ink); margin-top: 6px; margin-bottom: 4px;">
           <strong>${customer.customer_name}</strong> sudah ada ${existing.length} case${existing.length > 1 ? 's' : ''} dalam system.
         </div>
         <div style="font-size: 11px; color: var(--ink-3); margin-bottom: 8px;">
-          Last: ${STATUS_LABELS[customer.status]} · ${new Date(customer.date_payslip).toLocaleDateString('en-MY')} · CS: ${DB.user(customer.source_cs_id)?.name || '—'}
+          Original: CS ${originalCS?.name || '—'} (Team ${originalLeader?.name || '—'}) · ${new Date(customer.date_payslip).toLocaleDateString('en-MY')} · Status: ${STATUS_LABELS[customer.status]}
         </div>
-        ${note ? `<div style="font-size: 11px; color: var(--accent-deep); background: var(--cream); padding: 6px 10px; border-radius: 6px; margin-bottom: 8px;"><strong>Note:</strong> ${note}</div>` : ''}
-        <div style="display: flex; gap: 6px;">
-          <button onclick="App.viewCustomerHistory('${ic}')" style="flex: 1; background: var(--primary); color: var(--accent); border: none; padding: 8px; border-radius: 8px; font-weight: 700; font-size: 12px; cursor: pointer; font-family: inherit;">View History (${existing.length})</button>
-          <button onclick="App.fillFromCustomer('${customer.id}')" style="flex: 1; background: var(--accent); color: var(--primary-dark); border: none; padding: 8px; border-radius: 8px; font-weight: 700; font-size: 12px; cursor: pointer; font-family: inherit;">Use Same Info</button>
+        ${note ? `<div style="font-size: 11px; color: var(--accent-deep); background: var(--cream); padding: 6px 10px; border-radius: 6px; margin-bottom: 8px;"><strong>Customer note:</strong> ${note}</div>` : ''}
+        <div style="font-size: 11px; color: var(--ink-2); background: var(--cream); padding: 8px 10px; border-radius: 8px; margin-bottom: 10px; border: 1px dashed var(--border);">
+          <strong>Note:</strong> If you key as duplicate, it's recorded for tracking but <strong>won't count toward your payslip tier</strong>. Original CS gets the count.
+        </div>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button onclick="App.viewCustomerHistory('${ic}')" style="flex: 1 1 100px; background: var(--primary); color: var(--accent); border: none; padding: 8px; border-radius: 8px; font-weight: 700; font-size: 12px; cursor: pointer; font-family: inherit;">View History (${existing.length})</button>
+          <button onclick="App.fillFromCustomer('${customer.id}')" style="flex: 1 1 100px; background: var(--accent); color: var(--primary-dark); border: none; padding: 8px; border-radius: 8px; font-weight: 700; font-size: 12px; cursor: pointer; font-family: inherit;">Auto-fill Info</button>
         </div>
       </div>
     `;
@@ -3599,10 +3946,10 @@ const App = {
     const dateStr = new Date(c.date_payslip).toLocaleDateString('en-MY', { day: 'numeric', month: 'short' });
     
     return `
-      <div class="case-card ${c.status === 'disbursed' ? 'closed' : ''} ${c.status === 'rejected' ? 'rejected' : ''}" onclick="App.viewCase('${c.id}')">
+      <div class="case-card ${c.status === 'disbursed' ? 'closed' : ''} ${c.status === 'rejected' ? 'rejected' : ''}" onclick="App.viewCase('${c.id}')" ${c.is_duplicate ? 'style="border-left: 3px solid var(--warning); opacity: 0.85;"' : ''}>
         <div class="case-card-top">
           <div style="flex: 1;">
-            <div class="case-customer">${c.customer_name}</div>
+            <div class="case-customer">${c.customer_name} ${c.is_duplicate ? '<span style="background: var(--warning-bg); color: var(--warning); font-size: 9px; padding: 2px 6px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 800; vertical-align: middle; margin-left: 4px;">DUP</span>' : ''}</div>
             <div class="case-package" style="margin-top: 2px;">${c.ic || '—'} · ${c.phone || '—'}</div>
             <div style="font-size: 11px; color: var(--ink-3); margin-top: 3px;">
               CS: <strong style="color: var(--ink-2);">${cs?.name || '—'}</strong> · T.<strong style="color: var(--ink-2);">${leader?.name || '—'}</strong>
@@ -4283,8 +4630,8 @@ const App = {
       items = [
         { icon: 'home', label: 'Home', screen: 'admin-dashboard' },
         { icon: 'list', label: 'Customers', screen: 'admin-customers' },
-        { icon: 'trophy', label: 'Rankings', screen: 'admin-rankings' },
         { icon: 'users', label: 'Staff', screen: 'admin-staff' },
+        { icon: 'bank', label: 'Koperasi', screen: 'admin-koperasi' },
       ];
     }
     items.push({ icon: 'logout', label: 'Logout', action: 'logout' });
@@ -4296,6 +4643,7 @@ const App = {
       target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
       trophy: '<path d="M7 4h10v3a5 5 0 01-10 0V4zM5 4H3v2a3 3 0 003 3M19 4h2v2a3 3 0 01-3 3M12 14v4M8 21h8"/>',
       users: '<circle cx="9" cy="8" r="3"/><path d="M3 21a6 6 0 0112 0M16 11a3 3 0 100-6M21 21a6 6 0 00-6-6"/>',
+      bank: '<path d="M3 21h18M5 21V10M9 21V10M15 21V10M19 21V10M2 10h20L12 3 2 10z"/>',
       logout: '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>'
     };
     
@@ -4322,9 +4670,906 @@ const App = {
     `;
   },
   
+  // ============ ANNOUNCEMENT BANNER (top of all dashboards) ============
+  renderAnnouncementBanner() {
+    const anns = Logic.activeAnnouncements();
+    if (anns.length === 0) return '';
+    const latest = anns[0];
+    const byUser = DB.user(latest.posted_by);
+    return `
+      <div style="margin: 14px 20px 0; background: linear-gradient(135deg, #FFF8E8 0%, #FEF0CC 100%); border-left: 4px solid var(--accent); border-radius: 12px; padding: 14px 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+          <strong style="font-size: 10px; color: var(--accent-deep); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 800;">📣 Announcement · ${new Date(latest.date).toLocaleDateString('en-MY', {day:'numeric',month:'short'})}</strong>
+          ${anns.length > 1 ? `<span style="font-size: 10px; color: var(--ink-3); font-weight: 600;">+${anns.length - 1} more</span>` : ''}
+        </div>
+        <div style="font-family: 'Fraunces', serif; font-size: 16px; font-weight: 600; color: var(--primary); margin-bottom: 4px;">${latest.title}</div>
+        <div style="font-size: 13px; color: var(--ink); line-height: 1.5;">${latest.body}</div>
+        <div style="font-size: 10px; color: var(--ink-3); margin-top: 6px; font-weight: 600;">Posted by ${byUser?.name || latest.posted_by}</div>
+      </div>
+    `;
+  },
+  
+  // ============ PERFORMANCE BANNER (low warning / high encouragement) ============
+  renderPerformanceBanner(user) {
+    const level = Logic.performanceLevel(user.id, user.role);
+    if (level === 'normal') return '';
+    
+    const isLeader = user.role === 'leader' || user.role === 'solo';
+    const isSolo = user.role === 'solo';
+    
+    let banner = '';
+    
+    if (level === 'low') {
+      if (isLeader) {
+        const stats = Logic.leaderStats(user.id);
+        const t = isSolo ? PERFORMANCE.solo : PERFORMANCE.leader;
+        const gap = t.low - stats.kfiAmount;
+        banner = `
+          <div style="margin: 14px 20px 0; background: #FCE8E6; border-left: 4px solid var(--danger); border-radius: 12px; padding: 14px 16px;">
+            <strong style="font-size: 10px; color: var(--danger); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 800;">⚠ Low Performance Warning</strong>
+            <div style="font-family: 'Fraunces', serif; font-size: 17px; font-weight: 600; color: var(--ink); margin: 4px 0;">Anda kurang aktif bulan ini</div>
+            <div style="font-size: 12px; color: var(--ink-2); line-height: 1.5;">KFI sekarang: <strong>RM ${fmt(stats.kfiAmount)}</strong> · Bawah min baseline RM ${fmt(t.low)}. Perlu push <strong>RM ${fmt(gap)}</strong> lagi untuk tier minimum.</div>
+          </div>`;
+      } else {
+        const stats = Logic.csStats(user.id);
+        const gap = PERFORMANCE.cs.low - stats.total;
+        banner = `
+          <div style="margin: 14px 20px 0; background: #FCE8E6; border-left: 4px solid var(--danger); border-radius: 12px; padding: 14px 16px;">
+            <strong style="font-size: 10px; color: var(--danger); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 800;">⚠ Low Performance Warning</strong>
+            <div style="font-family: 'Fraunces', serif; font-size: 17px; font-weight: 600; color: var(--ink); margin: 4px 0;">Payslip count kurang bulan ini</div>
+            <div style="font-size: 12px; color: var(--ink-2); line-height: 1.5;">Payslip: <strong>${stats.total}</strong> · Min baseline ${PERFORMANCE.cs.low}. Perlu <strong>${gap} payslip</strong> lagi untuk min target.</div>
+          </div>`;
+      }
+    } else if (level === 'high') {
+      if (isLeader) {
+        const stats = Logic.leaderStats(user.id);
+        const t = isSolo ? PERFORMANCE.solo : PERFORMANCE.leader;
+        banner = `
+          <div style="margin: 14px 20px 0; background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%); border-left: 4px solid var(--success); border-radius: 12px; padding: 14px 16px;">
+            <strong style="font-size: 10px; color: var(--success); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 800;">🔥 Great Performance!</strong>
+            <div style="font-family: 'Fraunces', serif; font-size: 17px; font-weight: 600; color: var(--ink); margin: 4px 0;">Anda sangat aktif bulan ini!</div>
+            <div style="font-size: 12px; color: var(--ink-2); line-height: 1.5;">KFI: <strong>RM ${fmt(stats.kfiAmount)}</strong>. Push <strong>RM ${fmt(t.excellent - stats.kfiAmount)}</strong> lagi untuk reach excellence tier!</div>
+          </div>`;
+      } else {
+        const stats = Logic.csStats(user.id);
+        banner = `
+          <div style="margin: 14px 20px 0; background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%); border-left: 4px solid var(--success); border-radius: 12px; padding: 14px 16px;">
+            <strong style="font-size: 10px; color: var(--success); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 800;">🔥 Great Performance!</strong>
+            <div style="font-family: 'Fraunces', serif; font-size: 17px; font-weight: 600; color: var(--ink); margin: 4px 0;">Payslip count tinggi!</div>
+            <div style="font-size: 12px; color: var(--ink-2); line-height: 1.5;">${stats.total} payslips this month. Push <strong>${PERFORMANCE.cs.excellent - stats.total}</strong> lagi untuk reach 100 tier!</div>
+          </div>`;
+      }
+    } else if (level === 'excellent') {
+      banner = `
+        <div style="margin: 14px 20px 0; background: linear-gradient(135deg, var(--accent) 0%, #F5C518 100%); border-radius: 14px; padding: 18px 20px;">
+          <strong style="font-size: 10px; color: var(--primary-dark); text-transform: uppercase; letter-spacing: 0.14em; font-weight: 800;">🏆 Excellence Tier Achieved</strong>
+          <div style="font-family: 'Fraunces', serif; font-size: 20px; font-weight: 600; color: var(--primary-dark); margin: 4px 0;">Outstanding Performance!</div>
+          <div style="font-size: 13px; color: var(--primary-dark); line-height: 1.5; opacity: 0.85;">Anda dah capai top tier bulan ini. Keep it up!</div>
+        </div>`;
+    }
+    
+    return banner;
+  },
+  
+  // ============ ADMIN: KOPERASI MANAGEMENT (CRUD) ============
+  renderAdminKoperasi(user) {
+    const packages = DB.koperasi();
+    return this.topBar(user, 'Koperasi Packages', 'Manage loan products') + `
+      <div class="section-header">
+        <div class="section-title">${packages.length} Active Packages</div>
+        <a class="section-action" onclick="App.openAddKoperasi()">+ Add Koperasi</a>
+      </div>
+      
+      <div class="info-banner info" style="margin: 0 20px 14px;">
+        <strong>Manage your koperasi list here.</strong> Add new koperasi, edit rates, or remove old ones. Updates auto-sync to all users via cloud.
+      </div>
+      
+      <div style="padding: 0 20px;">
+        ${packages.map(p => `
+          <div class="case-card" style="margin-bottom: 8px;">
+            <div class="case-card-top">
+              <div style="flex: 1;">
+                <div class="case-customer">${p.name}</div>
+                <div style="font-size: 12px; color: var(--ink-3); margin-top: 4px;">
+                  Rate: <strong style="color: var(--primary);">${p.rate}%</strong> · 
+                  Payout: <strong style="color: ${p.payout >= 70 ? 'var(--success)' : 'var(--ink-2)'};">${p.payout}%</strong> · 
+                  Type: <strong style="text-transform: capitalize;">${p.type || 'normal'}</strong>
+                  ${p.isBonus ? ` · <span style="color: var(--accent-deep); font-weight: 700;">⭐ Bonus Eligible</span>` : ''}
+                </div>
+                ${p.remarks ? `<div style="font-size: 11px; color: var(--ink-3); margin-top: 4px; font-style: italic;">"${p.remarks}"</div>` : ''}
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <button onclick="App.openEditKoperasi('${p.id}')" style="background: var(--cream); color: var(--ink-2); border: 1px solid var(--border); padding: 6px 12px; border-radius: 8px; font-family: inherit; font-weight: 700; font-size: 11px; cursor: pointer;">Edit</button>
+                <button onclick="App.confirmDeleteKoperasi('${p.id}')" style="background: var(--cream); color: var(--danger); border: 1px solid rgba(184, 66, 58, 0.3); padding: 6px 12px; border-radius: 8px; font-family: inherit; font-weight: 700; font-size: 11px; cursor: pointer;">Delete</button>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  },
+  
+  openAddKoperasi() {
+    showModal(`
+      <div class="modal-title">Add New Koperasi</div>
+      <div class="modal-sub">Add a new loan package · syncs to all users</div>
+      
+      <div class="form-group">
+        <label>Koperasi Name *</label>
+        <input type="text" id="kp-name" placeholder="e.g. ANGKASA" style="text-transform: uppercase;">
+      </div>
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label>Interest Rate (%) *</label>
+          <input type="number" id="kp-rate" placeholder="e.g. 8.5" step="0.01" inputmode="decimal">
+        </div>
+        <div class="form-group">
+          <label>Payout (%) *</label>
+          <input type="number" id="kp-payout" placeholder="e.g. 75" step="1" inputmode="numeric">
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label>Type *</label>
+        <div class="case-type-pills" id="kp-type">
+          <div class="case-type-pill active" data-val="normal" onclick="App.pickRolePill(this, 'kp-type')">Normal</div>
+          <div class="case-type-pill" data-val="special" onclick="App.pickRolePill(this, 'kp-type')">Special</div>
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="kp-bonus" style="width: auto; margin-right: 8px;"> 
+          Bonus-Eligible (extra +1% commission like YTAA/KOMUJA)
+        </label>
+      </div>
+      
+      <div class="form-group">
+        <label>Remarks (optional)</label>
+        <textarea id="kp-remarks" rows="2" placeholder="Notes, terms, anything important..." style="width: 100%; background: var(--cream-2); border: 1px solid var(--border-2); border-radius: 11px; padding: 13px 14px; font-family: inherit; font-size: 14px; outline: none; resize: vertical;"></textarea>
+      </div>
+      
+      <button class="submit-btn" onclick="App.saveKoperasi()">Add Koperasi</button>
+      <button class="btn-secondary" onclick="hideModal()">Cancel</button>
+    `);
+    setTimeout(() => document.getElementById('kp-name')?.focus(), 100);
+  },
+  
+  openEditKoperasi(id) {
+    const p = DB.koperasiById(id);
+    if (!p) return;
+    showModal(`
+      <div class="modal-title">Edit Koperasi</div>
+      <div class="modal-sub">${p.name} (${p.id})</div>
+      
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="kp-name" value="${p.name}" style="text-transform: uppercase;">
+      </div>
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label>Interest Rate (%)</label>
+          <input type="number" id="kp-rate" value="${p.rate}" step="0.01" inputmode="decimal">
+        </div>
+        <div class="form-group">
+          <label>Payout (%)</label>
+          <input type="number" id="kp-payout" value="${p.payout}" step="1" inputmode="numeric">
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label>Type</label>
+        <div class="case-type-pills" id="kp-type">
+          <div class="case-type-pill ${(p.type || 'normal') === 'normal' ? 'active' : ''}" data-val="normal" onclick="App.pickRolePill(this, 'kp-type')">Normal</div>
+          <div class="case-type-pill ${p.type === 'special' ? 'active' : ''}" data-val="special" onclick="App.pickRolePill(this, 'kp-type')">Special</div>
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="kp-bonus" ${p.isBonus ? 'checked' : ''} style="width: auto; margin-right: 8px;"> 
+          Bonus-Eligible
+        </label>
+      </div>
+      
+      <div class="form-group">
+        <label>Remarks</label>
+        <textarea id="kp-remarks" rows="2" style="width: 100%; background: var(--cream-2); border: 1px solid var(--border-2); border-radius: 11px; padding: 13px 14px; font-family: inherit; font-size: 14px; outline: none; resize: vertical;">${p.remarks || ''}</textarea>
+      </div>
+      
+      <button class="submit-btn" onclick="App.saveKoperasi('${id}')">Save Changes</button>
+      <button class="btn-secondary" onclick="hideModal()">Cancel</button>
+    `);
+  },
+  
+  saveKoperasi(existingId) {
+    try {
+      const name = document.getElementById('kp-name').value.trim().toUpperCase();
+      const rate = parseFloat(document.getElementById('kp-rate').value);
+      const payout = parseInt(document.getElementById('kp-payout').value);
+      const typeEl = document.querySelector('#kp-type .case-type-pill.active');
+      const type = typeEl?.dataset.val || 'normal';
+      const isBonus = document.getElementById('kp-bonus').checked;
+      const remarks = document.getElementById('kp-remarks').value.trim();
+      
+      if (!name) { toast('Name diperlukan'); return; }
+      if (!rate || rate <= 0 || rate > 50) { toast('Interest rate kena valid (0-50%)'); return; }
+      if (!payout || payout <= 0 || payout > 100) { toast('Payout kena valid (0-100%)'); return; }
+      
+      const data = { name, rate, payout, type, isBonus, remarks };
+      
+      if (existingId) {
+        DB.updateKoperasi(existingId, data);
+        toast('Koperasi updated');
+      } else {
+        const pkg = DB.addKoperasi(data);
+        if (!pkg) { toast('Error · ID may exist'); return; }
+        toast('Koperasi "' + name + '" added');
+      }
+      hideModal();
+      this.render();
+    } catch (e) {
+      console.error('saveKoperasi:', e);
+      toast('Error: ' + e.message);
+    }
+  },
+  
+  confirmDeleteKoperasi(id) {
+    const p = DB.koperasiById(id);
+    if (!p) return;
+    if (!confirm(`Delete "${p.name}" permanently?\n\nExisting cases using this koperasi will keep their data but can't be edited.`)) return;
+    DB.deleteKoperasi(id);
+    toast('Koperasi "' + p.name + '" deleted');
+    this.render();
+  },
+  
+  // ============ ADMIN: ANNOUNCEMENTS ============
+  renderAdminAnnouncements(user) {
+    const anns = DB.announcements();
+    return this.topBar(user, 'Announcements', 'Post news to entire team') + `
+      <div class="section-header">
+        <div class="section-title">${anns.length} Posted</div>
+        <a class="section-action" onclick="App.openAddAnnouncement()">+ Post New</a>
+      </div>
+      
+      <div class="info-banner info" style="margin: 0 20px 14px;">
+        <strong>Announcement appears on every staff's dashboard.</strong> Use for important updates, new koperasi launches, policy changes, or motivational messages.
+      </div>
+      
+      <div style="padding: 0 20px;">
+        ${anns.length === 0 ? '<div style="text-align: center; padding: 40px 20px; color: var(--ink-3);">No announcements yet. Click "+ Post New" to add one.</div>' :
+          anns.map(a => {
+            const u = DB.user(a.posted_by);
+            const today = new Date().toISOString().slice(0,10);
+            const isExpired = a.expires_at && a.expires_at < today;
+            return `
+              <div style="background: var(--cream-2); border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; border: 1px solid var(--border-2); ${isExpired ? 'opacity: 0.5;' : ''}">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+                  <strong style="font-size: 10px; color: var(--accent-deep); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 800;">${new Date(a.date).toLocaleDateString('en-MY', {day:'numeric',month:'short',year:'numeric'})}</strong>
+                  ${isExpired ? '<span style="font-size: 10px; color: var(--danger); font-weight: 700; text-transform: uppercase;">Expired</span>' : ''}
+                </div>
+                <div style="font-family: 'Fraunces', serif; font-size: 16px; font-weight: 600; color: var(--primary); margin-bottom: 4px;">${a.title}</div>
+                <div style="font-size: 13px; color: var(--ink); line-height: 1.5; margin-bottom: 8px;">${a.body}</div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 10px; color: var(--ink-3); font-weight: 600;">By ${u?.name || a.posted_by}${a.expires_at ? ' · Expires ' + new Date(a.expires_at).toLocaleDateString('en-MY') : ''}</span>
+                  <button onclick="App.confirmDeleteAnnouncement('${a.id}')" style="background: transparent; color: var(--danger); border: none; padding: 4px 8px; font-family: inherit; font-weight: 700; font-size: 11px; cursor: pointer;">Delete</button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+      </div>
+    `;
+  },
+  
+  openAddAnnouncement() {
+    showModal(`
+      <div class="modal-title">Post Announcement</div>
+      <div class="modal-sub">Will show on every staff's dashboard</div>
+      
+      <div class="form-group">
+        <label>Title *</label>
+        <input type="text" id="ann-title" placeholder="e.g. KOSPEM rate updated">
+      </div>
+      
+      <div class="form-group">
+        <label>Body *</label>
+        <textarea id="ann-body" rows="4" placeholder="Sila ambil perhatian..." style="width: 100%; background: var(--cream-2); border: 1px solid var(--border-2); border-radius: 11px; padding: 13px 14px; font-family: inherit; font-size: 14px; outline: none; resize: vertical;"></textarea>
+      </div>
+      
+      <div class="form-group">
+        <label>Expires On (optional · leave blank for never)</label>
+        <input type="date" id="ann-expires">
+      </div>
+      
+      <button class="submit-btn" onclick="App.saveAnnouncement()">Post Now</button>
+      <button class="btn-secondary" onclick="hideModal()">Cancel</button>
+    `);
+    setTimeout(() => document.getElementById('ann-title')?.focus(), 100);
+  },
+  
+  saveAnnouncement() {
+    try {
+      const title = document.getElementById('ann-title').value.trim();
+      const body = document.getElementById('ann-body').value.trim();
+      const expires_at = document.getElementById('ann-expires').value || null;
+      if (!title) { toast('Title diperlukan'); return; }
+      if (!body) { toast('Body diperlukan'); return; }
+      DB.addAnnouncement({ title, body, expires_at });
+      hideModal();
+      toast('Announcement posted to all staff');
+      this.render();
+    } catch (e) {
+      toast('Error: ' + e.message);
+    }
+  },
+  
+  confirmDeleteAnnouncement(id) {
+    if (!confirm('Delete this announcement?')) return;
+    DB.deleteAnnouncement(id);
+    toast('Announcement deleted');
+    this.render();
+  },
+  
+  // ============ ADMIN: EXPORT REPORTS ============
+  renderAdminExport(user) {
+    const months = Logic.availableMonths();
+    const selectedYM = this.state.exportMonth || new Date().toISOString().slice(0,7);
+    const selectedStaff = this.state.exportStaff || 'all';
+    const selectedPkg = this.state.exportPkg || 'all';
+    const allStaff = DB.users().filter(u => u.role !== 'admin');
+    
+    return this.topBar(user, 'Export Reports', 'For monthly HQ submission') + `
+      <div class="info-banner info" style="margin: 0 20px 14px;">
+        <strong>Generate monthly reports.</strong> Filter by staff, month, package · download as CSV (open in Excel).
+      </div>
+      
+      <div class="section-header"><div class="section-title">Filters</div></div>
+      <div style="padding: 0 20px;">
+        <div class="form-group">
+          <label>Month</label>
+          <select id="exp-month" onchange="App.state.exportMonth = this.value; App.render();">
+            ${months.slice(0, 12).map(m => {
+              const d = new Date(m + '-01');
+              return `<option value="${m}" ${selectedYM === m ? 'selected' : ''}>${d.toLocaleDateString('en-MY', {month: 'long', year: 'numeric'})}</option>`;
+            }).join('')}
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label>Staff (filter)</label>
+          <select id="exp-staff" onchange="App.state.exportStaff = this.value; App.render();">
+            <option value="all" ${selectedStaff === 'all' ? 'selected' : ''}>All Staff</option>
+            ${allStaff.map(u => `<option value="${u.id}" ${selectedStaff === u.id ? 'selected' : ''}>${u.name} (${ROLE_LABELS[u.role]})</option>`).join('')}
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label>Koperasi Package (filter)</label>
+          <select id="exp-pkg" onchange="App.state.exportPkg = this.value; App.render();">
+            <option value="all" ${selectedPkg === 'all' ? 'selected' : ''}>All Packages</option>
+            ${LOAN_PACKAGES.map(p => `<option value="${p.id}" ${selectedPkg === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      
+      <div class="section-header"><div class="section-title">Generate Report</div></div>
+      <div style="padding: 0 20px;">
+        <div class="qa-card" onclick="App.exportReport('performance')">
+          <div class="qa-title">📊 Report A · Per-Staff Performance</div>
+          <div class="qa-sub">Each CS/Leader: Payslip / KPI / KFI / Reject / Commission</div>
+        </div>
+        <div class="qa-card" onclick="App.exportReport('submitted')">
+          <div class="qa-title">📋 Report B · All Submitted Cases</div>
+          <div class="qa-sub">Date, Customer, IC, Package, Loan, KFI, Status</div>
+        </div>
+        <div class="qa-card" onclick="App.exportReport('disbursed')">
+          <div class="qa-title">💰 Report C · Disbursement List</div>
+          <div class="qa-sub">Customer, IC, Package, Disburse Amount, Date</div>
+        </div>
+      </div>
+    `;
+  },
+  
+  exportReport(type) {
+    const ym = this.state.exportMonth || new Date().toISOString().slice(0,7);
+    const staff = this.state.exportStaff || 'all';
+    const pkg = this.state.exportPkg || 'all';
+    
+    let rows = [];
+    let filename = `awara_${type}_${ym}.csv`;
+    
+    if (type === 'performance') {
+      rows.push(['MONTHLY PERFORMANCE REPORT', ym]);
+      rows.push(['Generated:', new Date().toLocaleString('en-MY')]);
+      rows.push([]);
+      rows.push(['Name', 'Role', 'Team', 'Payslip', 'Duplicates', 'Submit (KPI)', 'Disburse', 'Reject', 'KFI (RM)', 'PS Comm (RM)', 'Submit Comm (RM)', 'KFI Comm (RM)', 'Total Comm (RM)']);
+      
+      const targets = staff === 'all' 
+        ? DB.users().filter(u => u.role !== 'admin')
+        : DB.users().filter(u => u.id === staff);
+      
+      targets.forEach(u => {
+        const isLeader = u.role === 'leader' || u.role === 'solo';
+        const stats = isLeader ? Logic.leaderStatsForMonth(u.id, ym) : Logic.csStatsForMonth(u.id, ym);
+        const team = isLeader ? u.name : (DB.user(u.leader_id)?.name || '—');
+        let csCom = null, leaderCom = null;
+        const isCurrent = ym === new Date().toISOString().slice(0,7);
+        if (isCurrent && !isLeader) csCom = Logic.csCommission(u.id);
+        if (isCurrent && isLeader) leaderCom = Logic.leaderCommission(u.id);
+        rows.push([
+          u.name,
+          ROLE_LABELS[u.role],
+          team,
+          stats.total || 0,
+          stats.totalDuplicates || 0,
+          stats.submitted || 0,
+          stats.disbursed || 0,
+          stats.rejected || 0,
+          (stats.kfiAmount || stats.disburseAmount || 0).toFixed(0),
+          csCom ? csCom.psCom.toFixed(2) : '—',
+          csCom ? csCom.smCom.toFixed(2) : '—',
+          leaderCom ? leaderCom.kfiCom.toFixed(2) : '—',
+          (csCom?.total || leaderCom?.total || 0).toFixed(2)
+        ]);
+      });
+    }
+    
+    if (type === 'submitted') {
+      rows.push(['SUBMITTED CASES REPORT', ym]);
+      rows.push(['Generated:', new Date().toLocaleString('en-MY')]);
+      rows.push([]);
+      rows.push(['Submit Date', 'Customer Name', 'IC', 'Phone', 'CS', 'Team Leader', 'Package', 'Loan Amount (RM)', 'Tenor (mth)', 'Bulanan (RM)', 'Status', 'KFI (RM)', 'Disburse Date']);
+      
+      let cases = DB.cases().filter(c => c.date_submitted && c.date_submitted.startsWith(ym));
+      if (staff !== 'all') cases = cases.filter(c => c.source_cs_id === staff || c.leader_id === staff);
+      if (pkg !== 'all') cases = cases.filter(c => c.package_id === pkg);
+      cases.sort((a,b) => a.date_submitted.localeCompare(b.date_submitted));
+      
+      cases.forEach(c => {
+        const cs = DB.user(c.source_cs_id);
+        const l = DB.user(c.leader_id);
+        const p = LOAN_PACKAGES.find(x => x.id === c.package_id);
+        rows.push([
+          c.date_submitted || '—',
+          c.customer_name,
+          c.ic || '—',
+          c.phone || '—',
+          cs?.name || '—',
+          l?.name || '—',
+          p?.name || '—',
+          (c.loan_amount || 0).toFixed(0),
+          c.tenor || '—',
+          (c.bulanan || 0).toFixed(2),
+          STATUS_LABELS[c.status],
+          (c.disburse_amount || 0).toFixed(0),
+          c.date_disbursed || '—'
+        ]);
+      });
+    }
+    
+    if (type === 'disbursed') {
+      rows.push(['DISBURSEMENT LIST', ym]);
+      rows.push(['Generated:', new Date().toLocaleString('en-MY')]);
+      rows.push([]);
+      rows.push(['Disburse Date', 'Customer Name', 'IC', 'Phone', 'Package', 'Loan (RM)', 'Approved (RM)', 'Disburse (RM)', 'CS', 'Team Leader']);
+      
+      let cases = DB.cases().filter(c => c.date_disbursed && c.date_disbursed.startsWith(ym) && c.status === 'disbursed');
+      if (staff !== 'all') cases = cases.filter(c => c.source_cs_id === staff || c.leader_id === staff);
+      if (pkg !== 'all') cases = cases.filter(c => c.package_id === pkg);
+      cases.sort((a,b) => a.date_disbursed.localeCompare(b.date_disbursed));
+      
+      let totalDisburse = 0;
+      cases.forEach(c => {
+        const cs = DB.user(c.source_cs_id);
+        const l = DB.user(c.leader_id);
+        const p = LOAN_PACKAGES.find(x => x.id === c.package_id);
+        totalDisburse += c.disburse_amount || 0;
+        rows.push([
+          c.date_disbursed,
+          c.customer_name,
+          c.ic || '—',
+          c.phone || '—',
+          p?.name || '—',
+          (c.loan_amount || 0).toFixed(0),
+          (c.approved_amount || c.loan_amount || 0).toFixed(0),
+          (c.disburse_amount || 0).toFixed(0),
+          cs?.name || '—',
+          l?.name || '—'
+        ]);
+      });
+      rows.push([]);
+      rows.push(['', '', '', '', 'TOTAL:', '', '', totalDisburse.toFixed(0)]);
+    }
+    
+    if (rows.length <= 4) { toast('No data for this filter'); return; }
+    
+    const csv = rows.map(r => r.map(v => `"${String(v == null ? '' : v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`Report downloaded: ${filename}`);
+  },
+  
+  // ============ ADMIN: SYSTEM SETTINGS (all business rules editable, no code) ============
+  renderAdminSettings(user) {
+    const s = DB.settings();
+    const draft = this.state.settingsDraft = this.state.settingsDraft || JSON.parse(JSON.stringify(s));
+    
+    return this.topBar(user, 'System Settings', 'All business rules · no code needed') + `
+      <div class="info-banner info" style="margin: 0 20px 14px;">
+        <strong>Edit any setting below.</strong> Changes apply to ALL users immediately after Save. No deploy / no code needed.
+      </div>
+      
+      <div class="section-header"><div class="section-title">💰 Commission · CS Payslip Tiers</div></div>
+      <div style="padding: 0 20px;">
+        <div style="background: var(--cream-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-2);">
+          <div style="font-size: 11px; color: var(--ink-3); margin-bottom: 10px;">CS dapat RM/payslip bila collected payslip count cukup tier minimum. Cth: 65 payslip × RM 1.00 = RM 65.</div>
+          ${this.renderTierEditor('cs_payslip', draft.commission.cs_payslip, 'Payslip Count', 'RM / payslip', 'rate', 0.01)}
+        </div>
+      </div>
+      
+      <div class="section-header"><div class="section-title">💰 Commission · CS Submit Tiers</div></div>
+      <div style="padding: 0 20px;">
+        <div style="background: var(--cream-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-2);">
+          <div style="font-size: 11px; color: var(--ink-3); margin-bottom: 10px;">CS dapat RM/submit bila submitted case count cukup tier. Cth: 25 submits × RM 30 = RM 750.</div>
+          ${this.renderTierEditor('cs_submit', draft.commission.cs_submit, 'Submit Count', 'RM / case', 'rate', 1)}
+        </div>
+      </div>
+      
+      <div class="section-header"><div class="section-title">💰 Commission · Team Leader KFI Tiers</div></div>
+      <div style="padding: 0 20px;">
+        <div style="background: var(--cream-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-2);">
+          <div style="font-size: 11px; color: var(--ink-3); margin-bottom: 10px;">Team Leader dapat % dari KFI disburse bila reach tier. Cth: RM 320,000 × 0.9% = RM 2,880.</div>
+          ${this.renderTierEditor('leader_kfi', draft.commission.leader_kfi, 'KFI Disburse (RM)', '% rate', 'rate', 0.01)}
+        </div>
+      </div>
+      
+      <div class="section-header"><div class="section-title">💰 Commission · Solo Leader KFI Tiers</div></div>
+      <div style="padding: 0 20px;">
+        <div style="background: var(--cream-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-2);">
+          <div style="font-size: 11px; color: var(--ink-3); margin-bottom: 10px;">Solo Leaders pakai half thresholds (sebab no team). Cth: RM 160,000 × 0.9% = RM 1,440.</div>
+          ${this.renderTierEditor('solo_kfi', draft.commission.solo_kfi, 'KFI Disburse (RM)', '% rate', 'rate', 0.01)}
+        </div>
+      </div>
+      
+      <div class="section-header"><div class="section-title">⭐ YTAA / KOMUJA Bonus</div></div>
+      <div style="padding: 0 20px;">
+        <div style="background: var(--cream-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-2);">
+          <div style="font-size: 11px; color: var(--ink-3); margin-bottom: 10px;">Extra commission bila YTAA/KOMUJA disburse hit threshold.</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Team Threshold (RM)</label>
+              <input type="number" id="set-bonus-team" value="${draft.commission.bonus_team}" min="0" step="1000" oninput="App.updateSettingsDraft('commission.bonus_team', parseInt(this.value)||0)">
+            </div>
+            <div class="form-group">
+              <label>Solo Threshold (RM)</label>
+              <input type="number" id="set-bonus-solo" value="${draft.commission.bonus_solo}" min="0" step="1000" oninput="App.updateSettingsDraft('commission.bonus_solo', parseInt(this.value)||0)">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Bonus Rate (% extra)</label>
+            <input type="number" id="set-bonus-rate" value="${draft.commission.bonus_rate}" min="0" max="10" step="0.1" oninput="App.updateSettingsDraft('commission.bonus_rate', parseFloat(this.value)||0)">
+          </div>
+        </div>
+      </div>
+      
+      <div class="section-header"><div class="section-title">🎯 Daily Targets</div></div>
+      <div style="padding: 0 20px;">
+        <div style="background: var(--cream-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-2);">
+          <div style="font-size: 11px; color: var(--ink-3); margin-bottom: 10px;">Daily activity goals per CS (auto-track on Daily Report).</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Calls / day</label>
+              <input type="number" value="${draft.daily_targets.calls}" min="0" oninput="App.updateSettingsDraft('daily_targets.calls', parseInt(this.value)||0)">
+            </div>
+            <div class="form-group">
+              <label>WhatsApp / day</label>
+              <input type="number" value="${draft.daily_targets.whatsapp}" min="0" oninput="App.updateSettingsDraft('daily_targets.whatsapp', parseInt(this.value)||0)">
+            </div>
+            <div class="form-group">
+              <label>Payslip / day</label>
+              <input type="number" value="${draft.daily_targets.payslip}" min="0" oninput="App.updateSettingsDraft('daily_targets.payslip', parseInt(this.value)||0)">
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="section-header"><div class="section-title">📊 Monthly Performance Thresholds</div></div>
+      <div style="padding: 0 20px;">
+        <div style="background: var(--cream-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-2); margin-bottom: 10px;">
+          <div style="font-size: 12px; font-weight: 700; color: var(--primary); margin-bottom: 8px;">CS (Payslip Count)</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Low (warning ⚠)</label>
+              <input type="number" value="${draft.performance.cs.low}" oninput="App.updateSettingsDraft('performance.cs.low', parseInt(this.value)||0)">
+            </div>
+            <div class="form-group">
+              <label>High (encourage 🔥)</label>
+              <input type="number" value="${draft.performance.cs.high}" oninput="App.updateSettingsDraft('performance.cs.high', parseInt(this.value)||0)">
+            </div>
+            <div class="form-group">
+              <label>Excellent 🏆</label>
+              <input type="number" value="${draft.performance.cs.excellent}" oninput="App.updateSettingsDraft('performance.cs.excellent', parseInt(this.value)||0)">
+            </div>
+          </div>
+        </div>
+        <div style="background: var(--cream-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-2); margin-bottom: 10px;">
+          <div style="font-size: 12px; font-weight: 700; color: var(--primary); margin-bottom: 8px;">Team Leader (KFI RM)</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Low (RM)</label>
+              <input type="number" value="${draft.performance.leader.low}" step="1000" oninput="App.updateSettingsDraft('performance.leader.low', parseInt(this.value)||0)">
+            </div>
+            <div class="form-group">
+              <label>High (RM)</label>
+              <input type="number" value="${draft.performance.leader.high}" step="1000" oninput="App.updateSettingsDraft('performance.leader.high', parseInt(this.value)||0)">
+            </div>
+            <div class="form-group">
+              <label>Excellent (RM)</label>
+              <input type="number" value="${draft.performance.leader.excellent}" step="1000" oninput="App.updateSettingsDraft('performance.leader.excellent', parseInt(this.value)||0)">
+            </div>
+          </div>
+        </div>
+        <div style="background: var(--cream-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-2);">
+          <div style="font-size: 12px; font-weight: 700; color: var(--primary); margin-bottom: 8px;">Solo Leader (KFI RM)</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Low (RM)</label>
+              <input type="number" value="${draft.performance.solo.low}" step="1000" oninput="App.updateSettingsDraft('performance.solo.low', parseInt(this.value)||0)">
+            </div>
+            <div class="form-group">
+              <label>High (RM)</label>
+              <input type="number" value="${draft.performance.solo.high}" step="1000" oninput="App.updateSettingsDraft('performance.solo.high', parseInt(this.value)||0)">
+            </div>
+            <div class="form-group">
+              <label>Excellent (RM)</label>
+              <input type="number" value="${draft.performance.solo.excellent}" step="1000" oninput="App.updateSettingsDraft('performance.solo.excellent', parseInt(this.value)||0)">
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="section-header"><div class="section-title">📝 Pending Reasons</div></div>
+      <div style="padding: 0 20px;">
+        <div style="background: var(--cream-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-2);">
+          <div style="font-size: 11px; color: var(--ink-3); margin-bottom: 10px;">Quick-pick reasons when marking case as Pending.</div>
+          ${this.renderListEditor('pending_reasons', draft.pending_reasons, 'reason')}
+        </div>
+      </div>
+      
+      <div class="section-header"><div class="section-title">📝 Reject Reasons</div></div>
+      <div style="padding: 0 20px;">
+        <div style="background: var(--cream-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-2);">
+          <div style="font-size: 11px; color: var(--ink-3); margin-bottom: 10px;">Quick-pick reasons when marking case as Rejected.</div>
+          ${this.renderListEditor('reject_reasons', draft.reject_reasons, 'reason')}
+        </div>
+      </div>
+      
+      <div class="section-header"><div class="section-title">💵 Loan Amount Options</div></div>
+      <div style="padding: 0 20px;">
+        <div style="background: var(--cream-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-2);">
+          <div style="font-size: 11px; color: var(--ink-3); margin-bottom: 10px;">Loan amount dropdown options in Stage 2 form.</div>
+          ${this.renderListEditor('loan_amounts', draft.loan_amounts, 'amount', true)}
+        </div>
+      </div>
+      
+      <div class="section-header"><div class="section-title">📅 Tenor Options</div></div>
+      <div style="padding: 0 20px;">
+        <div style="background: var(--cream-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-2);">
+          <div style="font-size: 11px; color: var(--ink-3); margin-bottom: 10px;">Tenor dropdown options (months + display label).</div>
+          ${this.renderTenorEditor(draft.tenors)}
+        </div>
+      </div>
+      
+      <div class="section-header"><div class="section-title">🎨 Branding</div></div>
+      <div style="padding: 0 20px;">
+        <div style="background: var(--cream-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-2);">
+          <div class="form-group">
+            <label>Company Name</label>
+            <input type="text" value="${draft.branding.company_name}" oninput="App.updateSettingsDraft('branding.company_name', this.value)">
+          </div>
+          <div class="form-group">
+            <label>Tagline</label>
+            <input type="text" value="${draft.branding.tagline}" oninput="App.updateSettingsDraft('branding.tagline', this.value)">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Primary Color</label>
+              <input type="color" value="${draft.branding.primary_color}" oninput="App.updateSettingsDraft('branding.primary_color', this.value); document.documentElement.style.setProperty('--primary', this.value);" style="height: 48px;">
+            </div>
+            <div class="form-group">
+              <label>Accent Color</label>
+              <input type="color" value="${draft.branding.accent_color}" oninput="App.updateSettingsDraft('branding.accent_color', this.value); document.documentElement.style.setProperty('--accent', this.value);" style="height: 48px;">
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div style="padding: 20px;">
+        <button class="submit-btn" onclick="App.saveSettings()" style="margin-bottom: 10px;">💾 Save All Settings</button>
+        <button class="btn-secondary" onclick="App.discardSettings()">Discard Changes</button>
+        <button class="btn-secondary" style="color: var(--danger); border-color: rgba(184, 66, 58, 0.3); margin-top: 8px;" onclick="App.resetSettings()">↻ Reset to Factory Defaults</button>
+      </div>
+    `;
+  },
+  
+  // ============ Tier Editor (for commission tiers) ============
+  renderTierEditor(key, tiers, minLabel, rateLabel, rateField, rateStep) {
+    return `
+      <div id="tier-${key}">
+        ${tiers.map((t, i) => `
+          <div class="form-row" style="align-items: end; gap: 8px; margin-bottom: 6px;">
+            <div class="form-group" style="margin: 0;">
+              <label>${minLabel}</label>
+              <input type="number" value="${t.min}" step="${key.includes('kfi') ? 1000 : 1}" min="0" oninput="App.updateTier('${key}', ${i}, 'min', parseFloat(this.value)||0)">
+            </div>
+            <div class="form-group" style="margin: 0;">
+              <label>${rateLabel}</label>
+              <input type="number" value="${t[rateField]}" step="${rateStep}" min="0" oninput="App.updateTier('${key}', ${i}, '${rateField}', parseFloat(this.value)||0)">
+            </div>
+            <button onclick="App.removeTier('${key}', ${i})" style="background: var(--cream); color: var(--danger); border: 1px solid rgba(184, 66, 58, 0.3); padding: 12px 14px; border-radius: 10px; font-family: inherit; font-weight: 700; font-size: 11px; cursor: pointer; height: 46px;">Remove</button>
+          </div>
+        `).join('')}
+        <button onclick="App.addTier('${key}', '${rateField}')" style="background: var(--cream); color: var(--primary); border: 1px dashed var(--primary); padding: 10px; border-radius: 10px; font-family: inherit; font-weight: 700; font-size: 12px; cursor: pointer; width: 100%; margin-top: 4px;">+ Add Tier</button>
+      </div>
+    `;
+  },
+  
+  updateTier(key, idx, field, value) {
+    const d = this.state.settingsDraft;
+    if (!d.commission[key][idx]) return;
+    d.commission[key][idx][field] = value;
+  },
+  addTier(key, rateField) {
+    const d = this.state.settingsDraft;
+    d.commission[key].push({ min: 0, [rateField]: 0 });
+    this.render();
+  },
+  removeTier(key, idx) {
+    const d = this.state.settingsDraft;
+    d.commission[key].splice(idx, 1);
+    this.render();
+  },
+  
+  // ============ List Editor (for reasons + loan amounts) ============
+  renderListEditor(key, items, itemLabel, isNumeric) {
+    return `
+      <div id="list-${key}">
+        ${items.map((item, i) => `
+          <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 6px;">
+            <input type="${isNumeric ? 'number' : 'text'}" value="${item}" 
+                   ${isNumeric ? 'step="1000" min="0"' : ''}
+                   oninput="App.updateListItem('${key}', ${i}, ${isNumeric ? 'parseInt(this.value)||0' : 'this.value'})"
+                   style="flex: 1; background: var(--cream); border: 1px solid var(--border-2); border-radius: 10px; padding: 10px 12px; font-family: inherit; font-size: 13px;">
+            <button onclick="App.removeListItem('${key}', ${i})" style="background: var(--cream); color: var(--danger); border: 1px solid rgba(184, 66, 58, 0.3); padding: 10px 12px; border-radius: 10px; font-family: inherit; font-weight: 700; font-size: 11px; cursor: pointer;">×</button>
+          </div>
+        `).join('')}
+        <button onclick="App.addListItem('${key}', ${!!isNumeric})" style="background: var(--cream); color: var(--primary); border: 1px dashed var(--primary); padding: 10px; border-radius: 10px; font-family: inherit; font-weight: 700; font-size: 12px; cursor: pointer; width: 100%; margin-top: 4px;">+ Add ${itemLabel}</button>
+      </div>
+    `;
+  },
+  
+  updateListItem(key, idx, value) {
+    const d = this.state.settingsDraft;
+    if (!d[key]) return;
+    d[key][idx] = value;
+  },
+  addListItem(key, isNumeric) {
+    const d = this.state.settingsDraft;
+    if (!d[key]) d[key] = [];
+    d[key].push(isNumeric ? 10000 : '');
+    this.render();
+  },
+  removeListItem(key, idx) {
+    const d = this.state.settingsDraft;
+    d[key].splice(idx, 1);
+    this.render();
+  },
+  
+  // ============ Tenor Editor ============
+  renderTenorEditor(tenors) {
+    return `
+      <div id="tenor-editor">
+        ${tenors.map((t, i) => `
+          <div class="form-row" style="align-items: end; gap: 8px; margin-bottom: 6px;">
+            <div class="form-group" style="margin: 0;">
+              <label>Months</label>
+              <input type="number" value="${t.m}" min="0" step="12" oninput="App.updateTenor(${i}, 'm', parseInt(this.value)||0)">
+            </div>
+            <div class="form-group" style="margin: 0;">
+              <label>Display Label</label>
+              <input type="text" value="${t.l}" oninput="App.updateTenor(${i}, 'l', this.value)">
+            </div>
+            <button onclick="App.removeTenor(${i})" style="background: var(--cream); color: var(--danger); border: 1px solid rgba(184, 66, 58, 0.3); padding: 12px 14px; border-radius: 10px; font-family: inherit; font-weight: 700; font-size: 11px; cursor: pointer; height: 46px;">×</button>
+          </div>
+        `).join('')}
+        <button onclick="App.addTenor()" style="background: var(--cream); color: var(--primary); border: 1px dashed var(--primary); padding: 10px; border-radius: 10px; font-family: inherit; font-weight: 700; font-size: 12px; cursor: pointer; width: 100%; margin-top: 4px;">+ Add Tenor</button>
+      </div>
+    `;
+  },
+  
+  updateTenor(idx, field, value) {
+    const d = this.state.settingsDraft;
+    if (!d.tenors[idx]) return;
+    d.tenors[idx][field] = value;
+  },
+  addTenor() {
+    const d = this.state.settingsDraft;
+    d.tenors.push({ m: 60, l: '5 tahun' });
+    this.render();
+  },
+  removeTenor(idx) {
+    this.state.settingsDraft.tenors.splice(idx, 1);
+    this.render();
+  },
+  
+  // ============ Settings Draft Helpers ============
+  updateSettingsDraft(path, value) {
+    const d = this.state.settingsDraft;
+    const parts = path.split('.');
+    let obj = d;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!obj[parts[i]]) obj[parts[i]] = {};
+      obj = obj[parts[i]];
+    }
+    obj[parts[parts.length - 1]] = value;
+  },
+  
+  saveSettings() {
+    try {
+      const draft = this.state.settingsDraft;
+      // Validate: tier mins must be > 0
+      const allTiers = [
+        ...draft.commission.cs_payslip, 
+        ...draft.commission.cs_submit,
+        ...draft.commission.leader_kfi,
+        ...draft.commission.solo_kfi
+      ];
+      const invalid = allTiers.find(t => isNaN(t.min) || t.min < 0 || isNaN(t.rate) || t.rate < 0);
+      if (invalid) { toast('Invalid tier value · check all numbers'); return; }
+      
+      // Clean empty list items
+      ['pending_reasons', 'reject_reasons'].forEach(k => {
+        draft[k] = (draft[k] || []).filter(x => x && x.trim());
+      });
+      draft.loan_amounts = (draft.loan_amounts || []).filter(x => x > 0).sort((a,b) => a - b);
+      draft.tenors = (draft.tenors || []).filter(t => t.m > 0 && t.l).sort((a,b) => a.m - b.m);
+      
+      DB.updateSettings(draft);
+      this.state.settingsDraft = null;
+      toast('✓ Settings saved · applied to all users');
+      this.render();
+    } catch (e) {
+      console.error('saveSettings:', e);
+      toast('Error: ' + (e.message || 'Unknown'));
+    }
+  },
+  
+  discardSettings() {
+    if (!confirm('Discard all unsaved changes?')) return;
+    this.state.settingsDraft = null;
+    // Revert color preview
+    refreshSettings();
+    this.render();
+  },
+  
+  resetSettings() {
+    if (!confirm('Reset ALL settings to factory defaults? This will overwrite current values.')) return;
+    DB.resetSettingsToDefault();
+    this.state.settingsDraft = null;
+    toast('Settings reset to defaults');
+    this.render();
+  },
+  
   renderFab(currentScreen) {
     const user = Auth.current();
-    if (!user || user.role === 'admin') return '';  // Admin doesn't add cases via FAB
+    if (!user || user.role === 'admin') return '';
     const noFab = ['add-case', 'login'];
     if (noFab.includes(currentScreen)) return '';
     return `<button class="fab" onclick="App.goto('add-case')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>`;
@@ -4336,26 +5581,196 @@ const App = {
 };
 
 // ==================== INIT ====================
-const SCHEMA_VERSION = '5.0';
+const SCHEMA_VERSION = '9.0';
 
-window.addEventListener('DOMContentLoaded', () => {
-  // Auto-migrate: if old schema detected, reset
+async function bootstrap() {
+  // Schema migration
   const ver = localStorage.getItem('awara_schema_version');
   if (ver !== SCHEMA_VERSION) {
     localStorage.removeItem(DB.K.users);
     localStorage.removeItem(DB.K.cases);
     localStorage.removeItem(DB.K.activities);
     localStorage.removeItem(DB.K.session);
+    localStorage.removeItem(DB.K.customer_notes);
+    localStorage.removeItem(DB.K.seen);
+    localStorage.removeItem(DB.K.koperasi);
+    localStorage.removeItem(DB.K.announcements);
+    localStorage.removeItem(DB.K.settings);
     localStorage.setItem('awara_schema_version', SCHEMA_VERSION);
   }
   
-  DB.seed();
-  // Auto-login as Anis for demo if no session
-  if (!Auth.current()) {
-    DB.setSession('anis');
+  // Try to load from Firestore first (if Cloud connected)
+  if (window.Cloud?.connected) {
+    try {
+      const cloudUsers = await window.Cloud.getAll('users');
+      
+      if (cloudUsers.length > 0) {
+        // Firestore has data → use it
+        console.log("Loading from Firestore...", cloudUsers.length, "users");
+        DB.set(DB.K.users, cloudUsers);
+        
+        const [cloudCases, cloudActs, cloudNotes, cloudKoperasi, cloudAnns, cloudSettings] = await Promise.all([
+          window.Cloud.getAll('cases'),
+          window.Cloud.getAll('activities'),
+          window.Cloud.getAll('customer_notes'),
+          window.Cloud.getAll('koperasi'),
+          window.Cloud.getAll('announcements'),
+          window.Cloud.getDoc('settings', 'main')
+        ]);
+        
+        DB.set(DB.K.cases, cloudCases);
+        DB.set(DB.K.activities, cloudActs);
+        
+        const notesObj = {};
+        cloudNotes.forEach(n => { if (n.ic) notesObj[n.ic] = n.note; });
+        DB.set(DB.K.customer_notes, notesObj);
+        
+        DB.set(DB.K.koperasi, cloudKoperasi.length > 0 ? cloudKoperasi : DEFAULT_PACKAGES);
+        DB.set(DB.K.announcements, cloudAnns);
+        
+        // Settings: use cloud or default
+        if (cloudSettings) {
+          DB.set(DB.K.settings, cloudSettings);
+        } else {
+          DB.set(DB.K.settings, DEFAULT_SETTINGS);
+          // Upload default settings to cloud
+          window.Cloud.setDoc('settings', 'main', { id: 'main', ...DEFAULT_SETTINGS });
+        }
+        
+        // If cloud koperasi was empty, upload defaults
+        if (cloudKoperasi.length === 0) {
+          DEFAULT_PACKAGES.forEach(p => window.Cloud.setDoc('koperasi', p.id, p));
+        }
+        
+        toastIfReady("✓ Synced from cloud · " + cloudCases.length + " cases");
+      } else {
+        // Empty Firestore → seed locally + upload
+        console.log("Firestore empty. Seeding...");
+        DB.seed();
+        await syncAllToCloud();
+        toastIfReady("✓ Initial data uploaded to cloud");
+      }
+      
+      // Subscribe to real-time updates
+      window.Cloud.subscribe('cases', items => {
+        DB.set(DB.K.cases, items);
+        if (App.state.currentScreen !== 'login') App.render();
+      });
+      window.Cloud.subscribe('users', items => {
+        DB.set(DB.K.users, items);
+      });
+      window.Cloud.subscribe('activities', items => {
+        DB.set(DB.K.activities, items);
+      });
+      window.Cloud.subscribe('customer_notes', items => {
+        const obj = {};
+        items.forEach(n => { if (n.ic) obj[n.ic] = n.note; });
+        DB.set(DB.K.customer_notes, obj);
+      });
+      window.Cloud.subscribe('koperasi', items => {
+        DB.set(DB.K.koperasi, items);
+        refreshPackages();
+      });
+      window.Cloud.subscribe('announcements', items => {
+        DB.set(DB.K.announcements, items);
+        if (App.state.currentScreen !== 'login') App.render();
+      });
+      // Settings is a single doc 'main' - listen via getDoc-style polling not needed
+      // (settings rarely change; manual reload picks up changes)
+      window.Cloud.subscribe('settings', items => {
+        const main = items.find(s => s.id === 'main');
+        if (main) {
+          DB.set(DB.K.settings, main);
+          refreshSettings();
+          if (App.state.currentScreen !== 'login') App.render();
+        }
+      });
+      
+    } catch (e) {
+      console.error("Cloud sync failed, falling back to local:", e);
+      DB.seed();
+      toastIfReady("⚠ Cloud sync error · using local data");
+    }
+  } else {
+    // No cloud - just seed local
+    DB.seed();
+  }
+  
+  // Refresh dynamic LOAN_PACKAGES from DB.koperasi() + Settings from DB.settings()
+  refreshPackages();
+  refreshSettings();
+  
+  // No auto-login - show login screen first (PRODUCTION MODE)
+  // (For dev/demo, append ?dev=1 to URL to use persona switcher)
+  const isDev = location.search.includes('dev=1');
+  if (isDev && !Auth.current()) {
+    DB.setSession('wilson');  // dev mode: auto-login as admin
   }
   App.render();
-});
+}
+
+// Upload all local data to Firestore (used for first-time seed)
+async function syncAllToCloud() {
+  if (!window.Cloud?.connected) return false;
+  try {
+    const users = DB.users();
+    const cases = DB.cases();
+    const acts = DB.activities();
+    const notes = DB.customerNotes();
+    const koperasi = DB.koperasi();
+    const announcements = DB.announcements();
+    
+    await window.Cloud.batchSet('users', users, 'id');
+    await window.Cloud.batchSet('cases', cases, 'id');
+    
+    const actsWithId = acts.map(a => ({...a, id: `${a.cs_id}_${a.date}`}));
+    await window.Cloud.batchSet('activities', actsWithId, 'id');
+    
+    const noteArr = Object.entries(notes).map(([ic, note]) => ({ id: ic, ic, note }));
+    if (noteArr.length > 0) await window.Cloud.batchSet('customer_notes', noteArr, 'id');
+    
+    if (koperasi.length > 0) await window.Cloud.batchSet('koperasi', koperasi, 'id');
+    if (announcements.length > 0) await window.Cloud.batchSet('announcements', announcements, 'id');
+    
+    // Settings is a single doc with id='main'
+    const settings = DB.settings();
+    await window.Cloud.setDoc('settings', 'main', { id: 'main', ...settings });
+    
+    console.log("✓ Synced all to cloud");
+    return true;
+  } catch (e) {
+    console.error("syncAllToCloud error:", e);
+    return false;
+  }
+}
+
+function toastIfReady(msg) {
+  if (typeof toast === 'function' && document.getElementById('toast-container')) {
+    toast(msg);
+  } else {
+    console.log("[toast]", msg);
+  }
+}
+
+// Wait for both DOM and Cloud to be ready before booting
+let domReady = false;
+let cloudReady = false;
+function tryBoot() {
+  if (domReady && (cloudReady || !window.Cloud)) {
+    bootstrap();
+  }
+}
+
+window.addEventListener('DOMContentLoaded', () => { domReady = true; tryBoot(); });
+window.addEventListener('cloud-ready', () => { cloudReady = true; tryBoot(); });
+// Fallback if cloud-ready doesn't fire within 3s, boot anyway with local data
+setTimeout(() => {
+  if (!cloudReady) {
+    console.warn("Cloud didn't load within 3s — booting with local data");
+    cloudReady = true;
+    tryBoot();
+  }
+}, 3000);
 </script>
 
 </body>
