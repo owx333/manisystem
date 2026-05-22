@@ -11,6 +11,7 @@
 
 <!-- ============ FIREBASE SDK (compat version - works from file:// too) ============ -->
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script>
 window.__firebaseStatus = { stage: 'loading', error: null };
@@ -35,11 +36,49 @@ window.__firebaseStatus = { stage: 'loading', error: null };
     window.__firebaseStatus.stage = 'app-initialized';
     
     const fbDb = firebase.firestore();
+    const fbAuth = firebase.auth();
     window.__firebaseStatus.stage = 'firestore-initialized';
     
-    // Note: We don't enable IndexedDB persistence to avoid deprecation warnings and
-    // version-conflict issues. App is online-first; localStorage cache handles offline reads.
-    // Future: use firebase.firestore().settings({ cache: ... }) for cleaner persistence.
+    // ========== SHARED AUTH (Layer 2 Security) ==========
+    // Auto-signin to a shared service account so Firestore rules can require auth
+    // 14 staff不需要做任何事 — completely invisible. App login still uses Name+Password.
+    // Without these credentials, attackers (even with API key) cannot access Firestore.
+    const SHARED_AUTH = {
+      email: 'awara-service@awara.local',
+      password: 'AwaraSys_2026_Kx9pL3mR_Sec'  // ⚠ if you change this in Firebase Console, update here too!
+    };
+    
+    async function ensureSharedAuth() {
+      // Already signed in? skip
+      if (fbAuth.currentUser) {
+        console.log('🔐 Already signed in:', fbAuth.currentUser.email);
+        return true;
+      }
+      try {
+        await fbAuth.signInWithEmailAndPassword(SHARED_AUTH.email, SHARED_AUTH.password);
+        console.log('🔐 Shared auth ready · Firestore unlocked');
+        return true;
+      } catch (e) {
+        console.error('⚠ Shared auth FAILED — Firestore may be locked:', e.code, e.message);
+        // Show user-friendly hint
+        if (e.code === 'auth/user-not-found') {
+          console.warn('💡 Setup needed: Create user "awara-service@awara.local" in Firebase Auth Console');
+        } else if (e.code === 'auth/wrong-password') {
+          console.warn('💡 Password mismatch — update Firebase Console OR update SHARED_AUTH.password in code');
+        } else if (e.code === 'auth/operation-not-allowed') {
+          console.warn('💡 Setup needed: Enable Email/Password sign-in method in Firebase Auth Console');
+        }
+        return false;
+      }
+    }
+    
+    // Keep session alive — if signed out somehow, re-sign-in
+    fbAuth.onAuthStateChanged(user => {
+      if (!user) {
+        console.log('🔓 Auth state lost · re-signing in...');
+        ensureSharedAuth();
+      }
+    });
     
     // ========== Cloud API ==========
     window.Cloud = {
@@ -47,6 +86,9 @@ window.__firebaseStatus = { stage: 'loading', error: null };
       connected: false,
       collections: ['users', 'cases', 'activities', 'customer_notes', 'seen', 'koperasi', 'announcements', 'settings'],
       listeners: {},
+      
+      // Expose for bootstrap to call before Firestore reads
+      ensureAuth: ensureSharedAuth,
       
       async setDoc(collectionName, docId, data) {
         try {
@@ -137,7 +179,8 @@ window.__firebaseStatus = { stage: 'loading', error: null };
       getDoc: async () => null,
       batchSet: async () => false,
       subscribe: () => {},
-      unsubscribeAll: () => {}
+      unsubscribeAll: () => {},
+      ensureAuth: async () => false   // offline mode - no auth possible
     };
     window.dispatchEvent(new Event('cloud-ready'));
   }
@@ -733,15 +776,9 @@ const DEFAULT_SETTINGS = {
       { min: 160000, rate: 0.9 },
       { min: 270000, rate: 1.1 }
     ],
-    // Submit-count based LUMP SUM bonus for Leader/Solo (rejected cases excluded from count)
-    // Awarded once per tier hit (not per submit). Different from cs_submit which is per-case rate.
-    leader_submit: [
-      { min: 7, lump: 140 },
-      { min: 11, lump: 420 },
-      { min: 15, lump: 910 },
-      { min: 19, lump: 1120 },
-      { min: 25, lump: 1610 }
-    ],
+    // Submit-count based LUMP SUM bonus for Solo ONLY (rejected cases excluded from count)
+    // TL does NOT get this - they only have KFI % commission + package bonuses
+    leader_submit: [],  // empty - TL does not earn submit lump bonus
     solo_submit: [
       { min: 7, lump: 140 },
       { min: 11, lump: 420 },
@@ -1229,6 +1266,33 @@ const DB = {
     return users[idx];
   },
   
+  addUser(newUser) {
+    // Centralized add-user: writes to localStorage + Firestore in one call
+    const users = this.users();
+    if (users.find(u => u.id === newUser.id)) return null;  // duplicate ID
+    users.push(newUser);
+    const ok = this.set(this.K.users, users);
+    if (!ok) return null;
+    // Mirror to Firestore
+    if (window.Cloud?.connected) {
+      window.Cloud.setDoc('users', newUser.id, newUser).catch(e => 
+        console.error('Failed to sync new user to Firestore:', e)
+      );
+    }
+    return newUser;
+  },
+  
+  deleteUserById(id) {
+    const users = this.users().filter(u => u.id !== id);
+    this.set(this.K.users, users);
+    if (window.Cloud?.connected) {
+      window.Cloud.deleteDoc('users', id).catch(e => 
+        console.error('Failed to delete user from Firestore:', e)
+      );
+    }
+    return true;
+  },
+  
   // Cases
   cases() { return this.get(this.K.cases); },
   caseById(id) { return this.cases().find(c => c.id === id); },
@@ -1602,20 +1666,27 @@ const Logic = {
     
     const total = validPayslip.length;
     const totalDuplicates = duplicates.length;
-    const submitted = submitCases.filter(c => !c.is_duplicate).length;
+    // KPI count = cases that were submitted AND still alive (NOT rejected) - item 4 requirement
+    // Rejected this month doesn't count toward submit/KPI commission
+    const submitted = submitCases.filter(c => !c.is_duplicate && c.status !== 'rejected').length;
+    const submittedRaw = submitCases.filter(c => !c.is_duplicate).length;  // including rejected (for display only)
     const disbursed = disburseCases.filter(c => !c.is_duplicate).length;
     const rejected = rejectCases.filter(c => !c.is_duplicate).length;
     const newCount = validPayslip.filter(c => c.status === 'new').length;
     const inProgress = validPayslip.filter(c => ['contacted', 'proposed', 'submitted', 'approved'].includes(c.status)).length;
-    // Pipeline = pending contact - the user can see what's "in flight"
-    const inPipeline = validPayslip.filter(c => !['contacted'].includes(c.status)).length;
+    // Pipeline = CS payslips yang Leader BELUM tekan "Contacted" lagi
+    // Once leader presses contacted, case keluar dari pipeline
+    // Tujuan: CS can see if leader is doing followup work or not
+    const inPipeline = validPayslip.filter(c => c.status === 'new').length;
     const pending = this.pendingCases({ csId }).filter(c => !c.is_duplicate).length;
+    const potential = validPayslip.filter(c => c.status === 'potential').length;
+    const onHold = validPayslip.filter(c => c.status === 'on_hold').length;
     const disburseAmount = disburseCases.filter(c => !c.is_duplicate).reduce((s,c) => s + (c.disburse_amount || 0), 0);
     const lostAmount = rejectCases.filter(c => !c.is_duplicate).reduce((s,c) => s + (c.loan_amount || 0), 0);
     
     return { 
       total, totalDuplicates,
-      submitted, inProgress, inPipeline, disbursed, rejected, newCount, pending,
+      submitted, inProgress, inPipeline, disbursed, rejected, newCount, pending, potential, onHold,
       disburseAmount, lostAmount, 
       cases: payslipCases,
       allCases: this.allCases({ csId })
@@ -1634,7 +1705,9 @@ const Logic = {
     
     const validPayslip = payslipCases.filter(c => !c.is_duplicate);
     const total = validPayslip.length;
-    const submitted = submitCases.filter(c => !c.is_duplicate).length;
+    // KPI count excludes rejected cases this month (item 4)
+    const submitted = submitCases.filter(c => !c.is_duplicate && c.status !== 'rejected').length;
+    const submittedRaw = submitCases.filter(c => !c.is_duplicate).length;
     const disbursed = disburseCases.filter(c => !c.is_duplicate).length;
     const newCount = validPayslip.filter(c => c.status === 'new').length;
     // KFI is on the disbursing leader (not original CS), so include all disbursed by this leader
@@ -1731,18 +1804,19 @@ const Logic = {
       if (upper) nextTier = { ...upper, need: upper.min - stats.kfiAmount };
     }
     
-    // Submit lump-sum bonus (item 3 + 4) - count SUBMITTED cases that are NOT rejected this month
-    // KPI = cases that were submitted to koperasi AND still in active flow (not rejected)
-    const submitTiers = stats.isSolo ? SOLO_SUBMIT_TIERS : LEADER_SUBMIT_TIERS;
+    // Submit lump-sum bonus (item 4) - SOLO ONLY (TL doesn't earn this)
+    // Count cases submitted this month, excluding rejected (item 4: 当月reject的话就不算kpi)
     const submitCases = this.monthlySubmitCases({ leaderId });
-    // Exclude rejected cases from the count (item 4: 当月reject的话就不算kpi)
     const validKpi = submitCases.filter(c => !c.is_duplicate && c.status !== 'rejected').length;
     let submitLump = 0, submitTier = null;
-    for (const t of submitTiers) {
-      if (validKpi >= t.min) { submitLump = t.lump || 0; submitTier = t; break; }
+    const submitTiers = stats.isSolo ? SOLO_SUBMIT_TIERS : [];  // TL has no submit tiers
+    if (stats.isSolo) {
+      for (const t of submitTiers) {
+        if (validKpi >= t.min) { submitLump = t.lump || 0; submitTier = t; break; }
+      }
     }
     let nextSubmitTier = null;
-    if (!submitTier && submitTiers.length) {
+    if (stats.isSolo && !submitTier && submitTiers.length) {
       nextSubmitTier = { ...submitTiers[submitTiers.length - 1], need: submitTiers[submitTiers.length - 1].min - validKpi };
     } else if (submitTier) {
       const upper = submitTiers.find(t => t.min > submitTier.min);
@@ -1803,7 +1877,9 @@ const Logic = {
   },
   
   csRanking() {
-    const users = DB.users().filter(u => u.role !== 'admin');
+    // Only include staff who DO CS work (CS + Solo who also key payslips)
+    // Excludes: Boss (admin), Manager, Kerani (admin role), Team Leaders
+    const users = DB.users().filter(u => u.role === 'cs' || u.role === 'solo');
     return users.map(u => {
       const s = this.csStats(u.id);
       return { user: u, ...s };
@@ -2103,15 +2179,31 @@ const App = {
       case 'daily-report': content = this.renderDailyReport(user); break;
       case 'leader-dashboard': content = this.renderLeaderDashboard(user); break;
       case 'leader-report': content = this.renderLeaderReport(user); break;
-      case 'admin-dashboard': content = this.renderAdminDashboard(user); break;
-      case 'admin-rankings': content = this.renderAdminRankings(user); break;
-      case 'admin-staff': content = this.renderAdminStaff(user); break;
+      case 'admin-dashboard': 
+        // Kerani can't access admin dashboard - redirect to customers
+        if (user.role === 'kerani') { this.state.currentScreen = 'admin-customers'; return this.render(); }
+        content = this.renderAdminDashboard(user); break;
+      case 'admin-rankings': 
+        if (user.role === 'kerani') { this.state.currentScreen = 'admin-customers'; return this.render(); }
+        content = this.renderAdminRankings(user); break;
+      case 'admin-staff': 
+        if (user.role === 'kerani') { this.state.currentScreen = 'admin-customers'; return this.render(); }
+        content = this.renderAdminStaff(user); break;
       case 'admin-customers': content = this.renderAdminCustomers(user); break;
-      case 'admin-weekly': content = this.renderAdminWeekly(user); break;
-      case 'admin-koperasi': content = this.renderAdminKoperasi(user); break;
-      case 'admin-announcements': content = this.renderAdminAnnouncements(user); break;
-      case 'admin-export': content = this.renderAdminExport(user); break;
-      case 'admin-settings': content = this.renderAdminSettings(user); break;
+      case 'admin-weekly': 
+        if (user.role === 'kerani') { this.state.currentScreen = 'admin-customers'; return this.render(); }
+        content = this.renderAdminWeekly(user); break;
+      case 'admin-koperasi': 
+        if (user.role === 'kerani') { this.state.currentScreen = 'admin-customers'; return this.render(); }
+        content = this.renderAdminKoperasi(user); break;
+      case 'admin-announcements': 
+        if (user.role === 'kerani') { this.state.currentScreen = 'admin-customers'; return this.render(); }
+        content = this.renderAdminAnnouncements(user); break;
+      case 'admin-export': 
+        content = this.renderAdminExport(user); break;
+      case 'admin-settings': 
+        if (user.role === 'kerani') { this.state.currentScreen = 'admin-customers'; return this.render(); }
+        content = this.renderAdminSettings(user); break;
       case 'add-case': content = this.renderAddCase(user); break;
       default: content = this.renderCSDashboard(user);
     }
@@ -2310,7 +2402,7 @@ const App = {
         <div class="kpi-card">
           <div class="label">In Pipeline</div>
           <div class="value">${stats.inPipeline}</div>
-          <div class="sub">pending contact</div>
+          <div class="sub">leader belum contact</div>
         </div>
         <div class="kpi-card lost" style="grid-column: span 2;">
           <div class="label">Rejected</div>
@@ -3598,13 +3690,47 @@ const App = {
         </div>
       </div>
       
+      ${isSolo ? `
+      <div class="section-header"><div class="section-title">KPI Lump Bonus · Submit Count (Solo only · Reject tak dikira)</div></div>
+      <div class="commission-card ${com.submitLump > 0 ? 'earned' : ''}">
+        <div class="com-header">
+          <div class="com-title">${com.validKpi} valid KPI submits this month</div>
+          <div class="com-amount"><span class="unit">RM</span>${fmt(com.submitLump)}</div>
+        </div>
+        <div class="com-sub">Cases submitted (excluding rejected this month) = ${com.validKpi}${com.submitTier ? ` · hit tier ≥${com.submitTier.min}` : ''}</div>
+        ${com.nextSubmitTier ? `<div class="com-progress"><strong>${com.nextSubmitTier.need} lagi submit</strong> untuk capai ≥${com.nextSubmitTier.min} → RM ${fmt(com.nextSubmitTier.lump)}</div>` : ''}
+        <div class="tier-table">
+          ${(com.submitTiers || []).slice().reverse().map(t => `
+            <div class="tier-row ${com.submitTier && com.submitTier.min === t.min ? 'active' : ''}">
+              <span>≥ ${t.min} submits</span>
+              <span class="rate">RM ${fmt(t.lump)}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      ` : ''}
+      
+      <div class="section-header"><div class="section-title">Special Bonus · Per Package</div></div>
       <div class="commission-card ${com.bonusEarned ? 'earned' : ''}">
         <div class="com-header">
-          <div class="com-title">Bonus YTAA & KOMUJA</div>
+          <div class="com-title">Package Bonus (YTAA / KOMUJA / dll.)</div>
           <div class="com-amount"><span class="unit">RM</span>${fmt(com.bonusCom)}</div>
         </div>
-        <div class="com-sub">YTAA + KOMUJA disburse: ${fmtRM(com.bonusKfi)} ${com.bonusEarned ? '· +1% Extra Com earned' : ''}</div>
-        ${!com.bonusEarned ? `<div class="com-progress"><strong>RM ${fmt(com.bonusThreshold - com.bonusKfi)} lagi</strong> untuk capai bonus (RM ${fmt(com.bonusThreshold)} disburse)</div>` : ''}
+        ${(com.bonusBreakdown && com.bonusBreakdown.length > 0) ? `
+          <div style="margin-top: 8px;">
+            ${com.bonusBreakdown.map(b => {
+              const pkg = LOAN_PACKAGES.find(p => p.id === b.package_id);
+              return `
+                <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border-2); font-size: 12px;">
+                  <span><strong>${pkg ? pkg.name : b.package_id}</strong>: RM ${fmt(b.amount)} disburse</span>
+                  <span style="color: ${b.earned > 0 ? 'var(--success)' : 'var(--ink-3)'};">
+                    ${b.earned > 0 ? `+RM ${fmt(b.earned)} (${b.rate}%)` : `need RM ${fmt(b.shortfall)} more`}
+                  </span>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        ` : `<div class="com-sub" style="margin-top: 6px;">Belum ada disburse untuk package bonus this month. Setup di Settings → Special Bonus by Package.</div>`}
       </div>
       
       <div class="stats-list">
@@ -3831,7 +3957,7 @@ const App = {
       const leaderCom = Logic.leaderCommission(l.id);
       return {
         user: l,
-        payslip: stats.totalPayslip || stats.cases.length,  // team payslip
+        payslip: stats.total,  // team payslip count (excludes duplicates)
         kpi: stats.kpi,  // team submitted
         kfi: stats.kfiAmount,  // team disburse
         com: leaderCom.total,  // KFI com + submit lump
@@ -4466,7 +4592,7 @@ const App = {
       </div>
       
       <div class="filter-bar">
-        ${['all','new','contacted','proposed','submitted','approved','disbursed','pending','rejected'].map(s => 
+        ${['all','new','contacted','proposed','submitted','approved','disbursed','pending','potential','on_hold','rejected'].map(s => 
           `<div class="filter-chip ${filterStatus === s ? 'active' : ''}" onclick="App.setFilter('adminCust','${s}')">${s === 'all' ? 'All Status' : STATUS_LABELS[s]}</div>`
         ).join('')}
       </div>
@@ -4584,11 +4710,11 @@ const App = {
       <div class="form-row">
         <div class="form-group">
           <label>Pendapatan (RM)</label>
-          <input type="number" id="ec-pend" value="${c.jumlah_pendapatan}" oninput="App.recalcEditGaji()">
+          <input type="number" id="ec-pend" value="${c.jumlah_pendapatan}" min="0" step="0.01" inputmode="decimal" oninput="App.recalcEditGaji()">
         </div>
         <div class="form-group">
           <label>Potongan (RM)</label>
-          <input type="number" id="ec-pot" value="${c.jumlah_potongan}" oninput="App.recalcEditGaji()">
+          <input type="number" id="ec-pot" value="${c.jumlah_potongan}" min="0" step="0.01" inputmode="decimal" oninput="App.recalcEditGaji()">
         </div>
       </div>
       
@@ -4649,14 +4775,17 @@ const App = {
   
   // ============ ADMIN: MANAGE STAFF ============
   renderAdminStaff(user) {
-    const users = DB.users().filter(u => u.role !== 'admin');
-    const leaders = users.filter(u => u.role === 'leader');
-    const solos = users.filter(u => u.role === 'solo');
-    const csUsers = users.filter(u => u.role === 'cs');
+    const allUsers = DB.users();
+    const managers = allUsers.filter(u => u.role === 'manager');
+    const adminUsers = allUsers.filter(u => u.role === 'kerani');  // Admin role (kerani internal name)
+    const leaders = allUsers.filter(u => u.role === 'leader');
+    const solos = allUsers.filter(u => u.role === 'solo');
+    const csUsers = allUsers.filter(u => u.role === 'cs');
+    const totalStaff = managers.length + adminUsers.length + leaders.length + solos.length + csUsers.length;
     
     const userCard = (u) => {
       const leader = u.role === 'cs' ? DB.user(u.leader_id) : null;
-      const teamSize = (u.role === 'leader') ? users.filter(x => x.leader_id === u.id).length : 0;
+      const teamSize = (u.role === 'leader') ? allUsers.filter(x => x.leader_id === u.id).length : 0;
       return `
         <div class="qa-card" onclick="App.editUser('${u.id}')">
           <div style="display: flex; align-items: center; gap: 12px;">
@@ -4673,8 +4802,18 @@ const App = {
     
     return this.topBar(user, 'Manage Staff') + `
       <div class="info-banner info">
-        <strong>14 staff total.</strong> Tap any staff to change role / reassign team / reset password.
+        <strong>${totalStaff} staff total.</strong> Tap any staff to change role / reassign team / reset password.
       </div>
+      
+      ${managers.length > 0 ? `
+        <div class="section-header"><div class="section-title">Manager (${managers.length})</div></div>
+        <div style="padding: 0 20px;">${managers.map(userCard).join('')}</div>
+      ` : ''}
+      
+      ${adminUsers.length > 0 ? `
+        <div class="section-header"><div class="section-title">Admin · Customer board only (${adminUsers.length})</div></div>
+        <div style="padding: 0 20px;">${adminUsers.map(userCard).join('')}</div>
+      ` : ''}
       
       <div class="section-header"><div class="section-title">Team Leaders (${leaders.length})</div></div>
       <div style="padding: 0 20px;">${leaders.map(userCard).join('')}</div>
@@ -4688,8 +4827,8 @@ const App = {
       <div class="section-header"><div class="section-title">Add New Staff</div></div>
       <div style="padding: 0 20px;">
         <div class="qa-card" onclick="App.addNewUser()">
-          <div class="qa-title">+ Add New CS / Leader</div>
-          <div class="qa-sub">Create new staff account · assign role</div>
+          <div class="qa-title">+ Add New Staff</div>
+          <div class="qa-sub">Create new staff · choose role: CS / Leader / Solo / Admin / Manager / Boss</div>
         </div>
       </div>
     `;
@@ -4763,14 +4902,7 @@ const App = {
   
   deleteUser(userId) {
     if (!confirm('Delete this staff? (Cases linked to them will keep their name)')) return;
-    const users = DB.users().filter(u => u.id !== userId);
-    DB.set(DB.K.users, users);
-    // Sync delete to Firestore
-    if (window.Cloud?.connected) {
-      window.Cloud.deleteDoc('users', userId).then(success => {
-        console.log(success ? '✓ User deleted from Firestore: ' + userId : 'Failed to delete from Firestore');
-      });
-    }
+    DB.deleteUserById(userId);
     hideModal();
     toast('Staff deleted' + (window.Cloud?.connected ? ' · synced ☁' : ''));
     this.render();
@@ -4875,27 +5007,18 @@ const App = {
         return; 
       }
       
-      // Save new user
-      const users = DB.users();
+      // Save new user via centralized method (writes localStorage + Firestore atomically)
       const newUser = { 
         id, name, role, 
         leader_id: role === 'cs' ? leaderId : null, 
-        password: pass 
+        password: pass,
+        created_at: Date.now()
       };
-      users.push(newUser);
-      const ok = DB.set(DB.K.users, users);
+      const saved = DB.addUser(newUser);
       
-      if (!ok) {
+      if (!saved) {
         toast('Storage error · cuba lagi');
         return;
-      }
-      
-      // Sync to Firestore so all other staff see this new user
-      if (window.Cloud?.connected) {
-        window.Cloud.setDoc('users', id, newUser).then(success => {
-          if (success) console.log('✓ New user synced to Firestore:', id);
-          else console.warn('Failed to sync new user to Firestore');
-        });
       }
       
       hideModal();
@@ -5843,18 +5966,10 @@ const App = {
         </div>
       </div>
       
-      <div class="section-header"><div class="section-title">💰 Commission · Team Leader Submit (Lump Bonus per submit count)</div></div>
+      <div class="section-header"><div class="section-title">💰 Commission · Solo Submit Lump Bonus (Solo only · TL tak ada ni)</div></div>
       <div style="padding: 0 20px;">
         <div style="background: var(--cream-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-2);">
-          <div style="font-size: 11px; color: var(--ink-3); margin-bottom: 10px;">Team Leader dapat one-time lump-sum bonus bila hit submit count tier this month (rejected cases tidak dikira KPI).</div>
-          ${this.renderTierEditor('leader_submit', draft.commission.leader_submit || [], 'KPI Count', 'Lump RM', 'lump', 10)}
-        </div>
-      </div>
-      
-      <div class="section-header"><div class="section-title">💰 Commission · Solo Submit (Lump Bonus per submit count)</div></div>
-      <div style="padding: 0 20px;">
-        <div style="background: var(--cream-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-2);">
-          <div style="font-size: 11px; color: var(--ink-3); margin-bottom: 10px;">Solo dapat lump-sum bonus bila hit submit count tier (rejected cases not counted). Default: 7→140, 11→420, 15→910, 19→1120, 25→1610.</div>
+          <div style="font-size: 11px; color: var(--ink-3); margin-bottom: 10px;">Solo dapat lump-sum bonus bila hit submit count tier this month (rejected cases tidak dikira KPI). Default: 7→140, 11→420, 15→910, 19→1120, 25→1610.</div>
           ${this.renderTierEditor('solo_submit', draft.commission.solo_submit || [], 'KPI Count', 'Lump RM', 'lump', 10)}
         </div>
       </div>
@@ -6271,7 +6386,7 @@ const App = {
 };
 
 // ==================== INIT ====================
-const SCHEMA_VERSION = '9.0';
+const SCHEMA_VERSION = '10.0';
 
 async function bootstrap() {
   // Schema migration
@@ -6292,6 +6407,15 @@ async function bootstrap() {
   // Try to load from Firestore first (if Cloud connected)
   if (window.Cloud?.connected) {
     try {
+      // ⚠ Sign in to shared service account FIRST so Firestore rules let us read
+      if (window.Cloud.ensureAuth) {
+        const authed = await window.Cloud.ensureAuth();
+        if (!authed) {
+          console.warn('⚠ Shared auth not ready · Firestore reads may fail · falling back to local cache');
+          toastIfReady('⚠ Cloud auth failed · using local cache only');
+        }
+      }
+      
       const cloudUsers = await window.Cloud.getAll('users');
       
       if (cloudUsers.length > 0) {
