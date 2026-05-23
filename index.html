@@ -5428,10 +5428,11 @@ ${isAdminLike ? `
         { icon: 'target', label: 'Daily', screen: 'daily-report' },
         { icon: 'chart', label: 'Report', screen: 'cs-report' },
       ];
-    } else if (user.role === 'kerani') {
-      // Admin (Kerani) - customer board ONLY
+} else if (user.role === 'kerani') {
+      // Admin (Kerani) - customer board + export
       items = [
         { icon: 'list', label: 'Customers', screen: 'admin-customers' },
+        { icon: 'export', label: 'Export', screen: 'admin-export' },
       ];
     } else if (Logic.isLeaderRole(user)) {
       items = [
