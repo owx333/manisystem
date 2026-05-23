@@ -5443,11 +5443,11 @@ ${isAdminLike ? `
     } else {
       // Boss / Manager
       items = [
-        { icon: 'home', label: 'Home', screen: 'admin-dashboard' },
+{ icon: 'home', label: 'Home', screen: 'admin-dashboard' },
         { icon: 'list', label: 'Customers', screen: 'admin-customers' },
         { icon: 'trophy', label: 'Ranking', screen: 'admin-rankings' },
         { icon: 'users', label: 'Staff', screen: 'admin-staff' },
-        { icon: 'bank', label: 'Koperasi', screen: 'admin-koperasi' },
+        { icon: 'export', label: 'Export', screen: 'admin-export' },
       ];
     }
     items.push({ icon: 'logout', label: 'Logout', action: 'logout' });
@@ -5460,6 +5460,7 @@ ${isAdminLike ? `
       trophy: '<path d="M7 4h10v3a5 5 0 01-10 0V4zM5 4H3v2a3 3 0 003 3M19 4h2v2a3 3 0 01-3 3M12 14v4M8 21h8"/>',
       users: '<circle cx="9" cy="8" r="3"/><path d="M3 21a6 6 0 0112 0M16 11a3 3 0 100-6M21 21a6 6 0 00-6-6"/>',
       bank: '<path d="M3 21h18M5 21V10M9 21V10M15 21V10M19 21V10M2 10h20L12 3 2 10z"/>',
+      export: '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
       logout: '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>'
     };
     
