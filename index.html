@@ -709,7 +709,7 @@ body.app-ready #app { opacity: 1; transition: opacity 0.2s; }
 <script>
 /* ============================================================
    AWARA CS MANAGEMENT SYSTEM
-   Built for AWARA SDN BHD 
+   Built for AWARA SDN BHD · Penang
    Version 1.0 · Working demo with localStorage backend
    For production: replace DB.* with Firebase calls
    ============================================================ */
@@ -829,7 +829,7 @@ const DEFAULT_SETTINGS = {
   ],
   branding: {
     company_name: 'AWARA',
-    tagline: 'Sdn Bhd',
+    tagline: 'Sdn Bhd · Penang',
     primary_color: '#0F5132',
     accent_color: '#F5C518'
   }
@@ -2229,7 +2229,7 @@ const App = {
       case 'admin-export': 
         content = this.renderAdminExport(user); break;
       case 'admin-settings': 
-        if (user.role === 'kerani') { this.state.currentScreen = 'admin-customers'; return this.render(); }
+        if (!Permissions.canEditSettings(user)) { content = this.renderAdminDashboard(user); break; }
         content = this.renderAdminSettings(user); break;
       case 'add-case': content = this.renderAddCase(user); break;
       default: content = this.renderCSDashboard(user);
@@ -2306,7 +2306,7 @@ const App = {
       <section id="screen-login" class="screen">
         <div class="login-header">
           <div class="login-awara">AWARA</div>
-          <div class="login-tagline">Sdn Bhd </div>
+          <div class="login-tagline">Sdn Bhd · Penang</div>
           <div class="login-sub">GOAL MANAGEMENT SYSTEM</div>
         </div>
         <form class="login-form" onsubmit="event.preventDefault(); App.doLogin();">
@@ -2322,7 +2322,7 @@ const App = {
           <div class="login-error" id="login-error"></div>
         </form>
         <div class="login-footer">
-          AWARA Sdn Bhd · Malaysia${isDev ? '<br><span style="opacity:0.5;">DEV: ANIS / FAIZAH / WILSON / password 1234</span>' : ''}
+          AWARA Sdn Bhd · Penang Malaysia${isDev ? '<br><span style="opacity:0.5;">DEV: ANIS / FAIZAH / WILSON / password 1234</span>' : ''}
         </div>
       </section>
     `;
@@ -2365,7 +2365,7 @@ const App = {
         <div class="top-bar-row">
           <div class="logo">
             <div class="awara-mark">AWARA</div>
-            <div class="logo-text"><span class="sdn">${title || 'Sdn Bhd'}</span></div>
+            <div class="logo-text"><span class="sdn">${title || 'Sdn Bhd · Penang'}</span></div>
           </div>
           <div class="avatar">${initials(user.name)}</div>
         </div>
@@ -3878,6 +3878,13 @@ ${isAdminLike ? `
     const stats = Logic.companyStats(branchId);
     const awards = Logic.awards();
     const teamRank = Logic.teamRanking();
+
+    // Branch breakdown (HQ only)
+    const branches = DB.branches().filter(b => b.id !== 'hq');
+    const branchBreakdown = Permissions.canViewAllBranches(user) ? branches.map(b => {
+      const s = Logic.companyStats(b.id);
+      return { branch: b, stats: s };
+    }) : null;
     
     return this.topBar(user, 'Boss Dashboard') + this.monthPill() + 
       this.renderAnnouncementBanner() + `
@@ -3885,7 +3892,7 @@ ${isAdminLike ? `
         <div class="kpi-card featured">
           <div class="label">Total Loan Submission</div>
           <div class="value"><span class="currency">RM</span>${fmt(stats.loanSubmission)}</div>
-          <div class="sub">${stats.submitted} cases · 6 Teams</div>
+          <div class="sub">${stats.submitted} cases${branchBreakdown ? ' · All Branches' : ''}</div>
         </div>
         <div class="kpi-card">
           <div class="label">KFI Disbursed</div>
@@ -3908,6 +3915,34 @@ ${isAdminLike ? `
           <div class="sub">cases submitted</div>
         </div>
       </div>
+
+      ${branchBreakdown ? `
+      <div class="section-header"><div class="section-title">📊 Branch Breakdown</div></div>
+      <div style="padding: 0 20px 4px;">
+        ${branchBreakdown.map(({ branch, stats: s }) => `
+          <div class="qa-card" style="margin-bottom: 10px;">
+            <div style="font-weight: 800; font-size: 14px; margin-bottom: 10px; color: var(--primary);">🏢 ${branch.name}</div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center;">
+              <div>
+                <div style="font-weight: 800; font-size: 15px; color: var(--primary);">${s.total}</div>
+                <div style="font-size: 9px; color: var(--ink-3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Payslip</div>
+              </div>
+              <div>
+                <div style="font-weight: 800; font-size: 15px; color: var(--primary);">${s.submitted}</div>
+                <div style="font-size: 9px; color: var(--ink-3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">KPI</div>
+              </div>
+              <div>
+                <div style="font-weight: 800; font-size: 15px; color: var(--primary);">RM ${fmtK(s.kfiAmount)}</div>
+                <div style="font-size: 9px; color: var(--ink-3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">KFI</div>
+              </div>
+              <div>
+                <div style="font-weight: 800; font-size: 15px; color: var(--danger);">RM ${fmtK(s.lostAmount)}</div>
+                <div style="font-size: 9px; color: var(--ink-3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Rejected</div>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>` : ''}
       
       <div class="section-header"><div class="section-title">${new Date().toLocaleDateString('en-MY', { month: 'short' })} Awards</div></div>
       <div class="awards-grid">
@@ -3990,10 +4025,11 @@ ${isAdminLike ? `
           <div class="qa-title">Post Announcement</div>
           <div class="qa-sub">Send notice to entire team · shows on every dashboard</div>
         </div>
+        ${Permissions.canEditSettings(user) ? `
         <div class="qa-card" onclick="App.goto('admin-settings')" style="border: 2px solid var(--accent); background: linear-gradient(135deg, #FFF8E8 0%, var(--cream-2) 100%);">
           <div class="qa-title">⚙️ System Settings</div>
           <div class="qa-sub">Commission tiers · Daily targets · Performance thresholds · Reasons · Branding</div>
-        </div>
+        </div>` : ''}
       </div>
     `;
   },
@@ -4056,38 +4092,53 @@ ${isAdminLike ? `
     }
     
     const tab = this.state.tabState.adminRank || 'cs';
+    const branches = DB.branches().filter(b => b.id !== 'hq');
+    
+    // Branch filter: HQ/Boss can pick any branch, others locked to own branch
+    const canPickBranch = Permissions.canViewAllBranches(user);
+    const selectedBranch = canPickBranch 
+      ? (this.state.rankingBranch || 'all') 
+      : user.branch_id;
+
+    // Filter users by branch
+    const filterByBranch = (users) => {
+      if (selectedBranch === 'all') return users;
+      return users.filter(u => u.branch_id === selectedBranch);
+    };
     
     // ====== Build enriched ranking data with all 5 metrics ======
     // CS Ranking: Payslip / KPI / KFI / Com / Special Com
-    const csUsers = DB.users().filter(u => u.role === 'cs' || u.role === 'solo');  // include solo (they also do CS work)
+    const csUsers = filterByBranch(DB.users().filter(u => u.role === 'cs' || u.role === 'solo'));
     const csRows = csUsers.map(u => {
       const stats = Logic.csStats(u.id);
       const csCom = Logic.csCommission(u.id);  // CS commission (payslip + submit)
       const leaderCom = u.role === 'solo' ? Logic.leaderCommission(u.id) : null;
       const specialCom = leaderCom ? leaderCom.bonusCom : 0;
       const totalCom = csCom.total + (leaderCom ? leaderCom.total : 0);
+      const branchName = DB.branch(u.branch_id)?.name || '';
       return {
-        user: u,
+        user: u, branchName,
         payslip: stats.total,
-        kpi: stats.submitted,  // submitted cases (KPI)
-        kfi: stats.disburseAmount,  // disburse amount
-        com: totalCom,  // total commission (cs + leader if solo)
-        specialCom: specialCom  // bonus from YTAA/KOMUJA/etc.
+        kpi: stats.submitted,
+        kfi: stats.disburseAmount,
+        com: totalCom,
+        specialCom: specialCom
       };
     }).sort((a, b) => b.payslip - a.payslip);
     
     // Team Ranking: Team's Payslip / KPI / KFI / Com / Special Com
-    const teamLeaders = DB.users().filter(u => u.role === 'leader' || u.role === 'solo');
+    const teamLeaders = filterByBranch(DB.users().filter(u => u.role === 'leader' || u.role === 'solo'));
     const teamRows = teamLeaders.map(l => {
       const stats = Logic.leaderStats(l.id);
       const leaderCom = Logic.leaderCommission(l.id);
+      const branchName = DB.branch(l.branch_id)?.name || '';
       return {
-        user: l,
-        payslip: stats.total,  // team payslip count (excludes duplicates)
-        kpi: stats.kpi,  // team submitted
-        kfi: stats.kfiAmount,  // team disburse
-        com: leaderCom.total,  // KFI com + submit lump
-        specialCom: leaderCom.bonusCom  // package bonuses
+        user: l, branchName,
+        payslip: stats.total,
+        kpi: stats.kpi,
+        kfi: stats.kfiAmount,
+        com: leaderCom.total,
+        specialCom: leaderCom.bonusCom
       };
     }).sort((a, b) => b.kfi - a.kfi);
     
@@ -4095,7 +4146,7 @@ ${isAdminLike ? `
       <div class="ranking-card ${i === 0 ? 'gold' : ''}" onclick="App.viewStaffCustomers('${r.user.id}')" style="cursor: pointer; padding: 14px 16px;" title="Click to see customers">
         <div class="rank-num">${i+1}</div>
         <div style="flex: 1; min-width: 0;">
-          <div class="rank-name">${idPrefix}${r.user.name}${r.user.role === 'solo' ? ' <span class="solo-badge">Solo</span>' : ''}</div>
+          <div class="rank-name">${idPrefix}${r.user.name}${r.user.role === 'solo' ? ' <span class="solo-badge">Solo</span>' : ''}${selectedBranch === 'all' && r.branchName ? ` <span style="font-size:10px; font-weight:600; color:var(--ink-3); background:var(--cream-2); padding:2px 6px; border-radius:6px;">${r.branchName}</span>` : ''}</div>
           <div class="rank-sub" style="margin-bottom: 6px;">${ROLE_LABELS[r.user.role]} · 👆 tap to verify customers</div>
           <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; font-size: 10px; padding-top: 6px; border-top: 1px solid var(--border-2);">
             <div style="text-align: center;">
@@ -4124,6 +4175,12 @@ ${isAdminLike ? `
     `;
     
     return this.topBar(user, 'Rankings', new Date().toLocaleDateString('en-MY', {month: 'long', year: 'numeric'}) + ' · click row to verify customers') + `
+      ${canPickBranch ? `
+      <div style="padding: 12px 20px 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <span style="font-size: 11px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em;">Branch:</span>
+        <button onclick="App.setRankingBranch('all')" style="padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; background: ${selectedBranch === 'all' ? 'var(--primary)' : 'var(--cream-2)'}; color: ${selectedBranch === 'all' ? 'var(--cream)' : 'var(--ink)'};">All</button>
+        ${branches.map(b => `<button onclick="App.setRankingBranch('${b.id}')" style="padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; background: ${selectedBranch === b.id ? 'var(--primary)' : 'var(--cream-2)'}; color: ${selectedBranch === b.id ? 'var(--cream)' : 'var(--ink)'};">${b.name}</button>`).join('')}
+      </div>` : ''}
       <div class="tabs">
         <button class="tab ${tab === 'cs' ? 'active' : ''}" onclick="App.setTab('adminRank','cs')">CS Ranking</button>
         <button class="tab ${tab === 'team' ? 'active' : ''}" onclick="App.setTab('adminRank','team')">Team Ranking</button>
@@ -4151,6 +4208,11 @@ ${isAdminLike ? `
     this.goto('admin-customers');
   },
   
+  setRankingBranch(branchId) {
+    this.state.rankingBranch = branchId;
+    this.render();
+  },
+
   setTab(key, value) {
     this.state.tabState[key] = value;
     this.render();
