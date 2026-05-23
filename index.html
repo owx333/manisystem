@@ -2106,7 +2106,7 @@ const Logic = {
 // ==================== UI HELPERS ====================
 function fmt(n) { 
   if (n === null || n === undefined) return '0';
-  return Number(n).toLocaleString('en-MY', { maximumFractionDigits: 0 }); 
+  return Number(n).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function fmtK(n) {
   if (!n || n === 0) return '0';
@@ -2744,11 +2744,14 @@ if (isLeader && (this.state.tabState.cases || 'mine') === 'team') {
           ${c.disburse_amount ? `<div style="margin-top: 10px; padding: 10px 12px; background: var(--success); color: white; border-radius: 8px; font-size: 12px; font-weight: 700; display: flex; justify-content: space-between; align-items: center;"><span>Disbursed: ${fmtRM(c.disburse_amount)}</span><span style="font-size: 10px; opacity: 0.8;">${c.date_disbursed ? new Date(c.date_disbursed).toLocaleDateString('en-MY') : ''}</span></div>` : ''}
           ${c.status === 'pending' && c.pending_reason ? `<div style="margin-top: 10px; padding: 10px 12px; background: #F0E4FF; color: #6B3FB8; border-radius: 8px; font-size: 12px; font-weight: 600;"><strong>Pending:</strong> ${c.pending_reason}</div>` : ''}
           ${c.status === 'rejected' && c.rejection_reason ? `<div style="margin-top: 10px; padding: 10px 12px; background: var(--danger-bg); color: var(--danger); border-radius: 8px; font-size: 12px; font-weight: 600;"><strong>Rejected:</strong> ${c.rejection_reason}${c.date_rejected ? ' · ' + new Date(c.date_rejected).toLocaleDateString('en-MY') : ''}</div>` : ''}
-${isAdminLike && (c.amm_password || c.hrmis_password) ? `
+${isAdminLike ? `
             <div style="margin-top: 10px; padding: 10px 12px; background: var(--cream-2); border-radius: 8px; font-size: 11px; color: var(--ink-2); border: 1px dashed var(--border);">
-              <div style="font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 4px;">Submit Credentials</div>
-              ${c.amm_password ? `<div>ANM: <strong>${c.amm_password}</strong></div>` : ''}
-              ${c.hrmis_password ? `<div>HRMIS: <strong>${c.hrmis_password}</strong></div>` : ''}
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <div style="font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3);">Submit Credentials</div>
+                <button onclick="App.openEditCredentials('${c.id}')" style="background: var(--primary); color: var(--accent); border: none; border-radius: 6px; padding: 3px 10px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit;">✏️ Edit</button>
+              </div>
+              <div>ANM: <strong>${c.amm_password || '—'}</strong></div>
+              <div>HRMIS: <strong>${c.hrmis_password || '—'}</strong></div>
             </div>
           ` : ''}
           ${isAdminLike ? `
@@ -2865,6 +2868,34 @@ ${isAdminLike && (c.amm_password || c.hrmis_password) ? `
     };
     DB.updateCase(caseId, updates);
     toast('Admin detail disimpan ✓');
+    this.viewCase(caseId);
+  },
+  openEditCredentials(caseId) {
+    const c = DB.caseById(caseId);
+    if (!c) return;
+    showModal(`
+      <div class="modal-title">✏️ Edit Credentials</div>
+      <div class="modal-sub">${c.customer_name} · ${c.ic || '—'}</div>
+      <div class="form-group">
+        <label>ANM</label>
+        <input type="text" id="ec-amm" placeholder="ANM credential..." value="${c.amm_password || ''}">
+      </div>
+      <div class="form-group">
+        <label>HRMIS</label>
+        <input type="text" id="ec-hrmis" placeholder="HRMIS credential..." value="${c.hrmis_password || ''}">
+      </div>
+      <button class="submit-btn" onclick="App.saveEditCredentials('${caseId}')">💾 Simpan</button>
+      <button class="btn-secondary" onclick="App.viewCase('${caseId}')">Back</button>
+    `);
+  },
+
+  saveEditCredentials(caseId) {
+    const updates = {
+      amm_password:   document.getElementById('ec-amm').value.trim() || null,
+      hrmis_password: document.getElementById('ec-hrmis').value.trim() || null,
+    };
+    DB.updateCase(caseId, updates);
+    toast('Credentials dikemaskini ✓');
     this.viewCase(caseId);
   },
   
