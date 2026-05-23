@@ -709,7 +709,7 @@ body.app-ready #app { opacity: 1; transition: opacity 0.2s; }
 <script>
 /* ============================================================
    AWARA CS MANAGEMENT SYSTEM
-   Built for AWARA SDN BHD · Penang
+   Built for AWARA SDN BHD 
    Version 1.0 · Working demo with localStorage backend
    For production: replace DB.* with Firebase calls
    ============================================================ */
@@ -829,7 +829,7 @@ const DEFAULT_SETTINGS = {
   ],
   branding: {
     company_name: 'AWARA',
-    tagline: 'Sdn Bhd · Penang',
+    tagline: 'Sdn Bhd',
     primary_color: '#0F5132',
     accent_color: '#F5C518'
   }
@@ -957,6 +957,7 @@ function calcGajiBersih(pendapatan, potongan) {
 // NOTE: 'admin' role is internally treated as Boss (full power). Display label = 'Boss'.
 //       New 'manager' role added between Boss and Leader.
 const ROLE_LABELS = { 
+  hq: 'HQ',
   admin: 'Boss', 
   manager: 'Manager',
   kerani: 'Admin',   // customer-view-only role (clerk/office admin)
@@ -967,8 +968,14 @@ const ROLE_LABELS = {
 
 // ============ PERMISSIONS MATRIX ============
 // Centralized permission checks. Use everywhere instead of hardcoded role checks.
-// Role hierarchy: admin(Boss) > manager > kerani(Admin) > leader/solo > cs
+// Role hierarchy: hq(all branches) > admin(Boss) > manager > kerani(Admin) > leader/solo > cs
 const Permissions = {
+  // HQ: can see ALL branches, cannot be deleted/edited by branch admin
+  isHQ: u => u?.role === 'hq',
+  
+  // Can see all branches data (HQ only)
+  canViewAllBranches: u => u?.role === 'hq',
+
   // Can DELETE customer data, settings, users — Boss only
   canDelete: u => u?.role === 'admin',
   
@@ -977,11 +984,11 @@ const Permissions = {
   
   // Can EDIT customer info (Stage 1 fields like name/IC/phone/salary)
   // Boss + Manager + Kerani (Admin) + Leader + Solo
-  canEditCustomerInfo: u => ['admin', 'manager', 'kerani', 'leader', 'solo'].includes(u?.role),
+  canEditCustomerInfo: u => ['admin', 'manager', 'kerani', 'leader', 'solo', 'hq'].includes(u?.role),
   
   // Can edit ANY case (stage 3, status updates) regardless of who owns it — Boss + Manager only
   // (Kerani can edit info but not status flow)
-  canEditAllCases: u => ['admin', 'manager'].includes(u?.role),
+  canEditAllCases: u => ['admin', 'manager', 'hq'].includes(u?.role),
   
   // Can manage Staff (add/edit/delete users) — Boss + Manager
   canManageStaff: u => ['admin', 'manager'].includes(u?.role),
@@ -998,12 +1005,11 @@ const Permissions = {
   // Can export reports — Boss + Manager (Kerani can export customer data too)
   canExport: u => ['admin', 'manager', 'kerani'].includes(u?.role),
   
-  // Does the user have an admin-like dashboard? — Boss + Manager + Kerani
-  // Kerani gets a SLIMMED-DOWN admin dashboard (customers only)
-  isAdminLevel: u => ['admin', 'manager', 'kerani'].includes(u?.role),
+  // Does the user have an admin-like dashboard? — Boss + Manager + Kerani + HQ
+  isAdminLevel: u => ['admin', 'manager', 'kerani', 'hq'].includes(u?.role),
   
-  // Can see all cases across teams — Boss + Manager + Kerani
-  canSeeAllCases: u => ['admin', 'manager', 'kerani'].includes(u?.role),
+  // Can see all cases across teams — Boss + Manager + Kerani + HQ
+  canSeeAllCases: u => ['admin', 'manager', 'kerani', 'hq'].includes(u?.role),
   
   // Kerani-specific: limited to customer board only (no rankings/staff/settings/etc)
   isKeraniOnly: u => u?.role === 'kerani'
@@ -1012,24 +1018,31 @@ const Permissions = {
 // ==================== USERS (14 staff + 1 admin) ====================
 // Roles: admin, leader (has team), solo (solo leader, no team), cs
 // Admin can change anyone's role to promote/demote
+// ==================== BRANCHES ====================
+const SEED_BRANCHES = [
+  { id: 'hq', name: 'HQ' },
+  { id: 'branch_a', name: 'Branch A' },
+];
+
 const SEED_USERS = [
-  { id: 'wilson', name: 'Wilson', role: 'admin', leader_id: null, password: '1234' },
+  { id: 'hq', name: 'HQ', role: 'hq', branch_id: 'hq', leader_id: null, password: '1234' },
+  { id: 'wilson', name: 'Wilson', role: 'admin', branch_id: 'branch_a', leader_id: null, password: '1234' },
   // Team Leaders (with CS under them)
-  { id: 'ayna', name: 'Ayna', role: 'leader', leader_id: null, password: '1234' },
-  { id: 'faizah', name: 'Faizah', role: 'leader', leader_id: null, password: '1234' },
-  { id: 'izah', name: 'Izah', role: 'leader', leader_id: null, password: '1234' },
-  { id: 'elly', name: 'Elly', role: 'leader', leader_id: null, password: '1234' },
+  { id: 'ayna', name: 'Ayna', role: 'leader', branch_id: 'branch_a', leader_id: null, password: '1234' },
+  { id: 'faizah', name: 'Faizah', role: 'leader', branch_id: 'branch_a', leader_id: null, password: '1234' },
+  { id: 'izah', name: 'Izah', role: 'leader', branch_id: 'branch_a', leader_id: null, password: '1234' },
+  { id: 'elly', name: 'Elly', role: 'leader', branch_id: 'branch_a', leader_id: null, password: '1234' },
   // Solo Leaders (no CS under them, half tier thresholds)
-  { id: 'atirah', name: 'Atirah', role: 'solo', leader_id: null, password: '1234' },
-  { id: 'hani', name: 'Hani', role: 'solo', leader_id: null, password: '1234' },
+  { id: 'atirah', name: 'Atirah', role: 'solo', branch_id: 'branch_a', leader_id: null, password: '1234' },
+  { id: 'hani', name: 'Hani', role: 'solo', branch_id: 'branch_a', leader_id: null, password: '1234' },
   // CS
-  { id: 'jihah', name: 'Jihah', role: 'cs', leader_id: 'ayna', password: '1234' },
-  { id: 'hidayah', name: 'Hidayah', role: 'cs', leader_id: 'faizah', password: '1234' },
-  { id: 'anis', name: 'Anis', role: 'cs', leader_id: 'faizah', password: '1234' },
-  { id: 'mira', name: 'Mira', role: 'cs', leader_id: 'izah', password: '1234' },
-  { id: 'amira', name: 'Amira', role: 'cs', leader_id: 'izah', password: '1234' },
-  { id: 'tika', name: 'Tika', role: 'cs', leader_id: 'elly', password: '1234' },
-  { id: 'atikah', name: 'Atikah', role: 'cs', leader_id: 'elly', password: '1234' },
+  { id: 'jihah', name: 'Jihah', role: 'cs', branch_id: 'branch_a', leader_id: 'ayna', password: '1234' },
+  { id: 'hidayah', name: 'Hidayah', role: 'cs', branch_id: 'branch_a', leader_id: 'faizah', password: '1234' },
+  { id: 'anis', name: 'Anis', role: 'cs', branch_id: 'branch_a', leader_id: 'faizah', password: '1234' },
+  { id: 'mira', name: 'Mira', role: 'cs', branch_id: 'branch_a', leader_id: 'izah', password: '1234' },
+  { id: 'amira', name: 'Amira', role: 'cs', branch_id: 'branch_a', leader_id: 'izah', password: '1234' },
+  { id: 'tika', name: 'Tika', role: 'cs', branch_id: 'branch_a', leader_id: 'elly', password: '1234' },
+  { id: 'atikah', name: 'Atikah', role: 'cs', branch_id: 'branch_a', leader_id: 'elly', password: '1234' },
 ];
 
 // Seed demo cases with new 2-stage schema
@@ -1230,7 +1243,7 @@ const DB = {
     users: 'awara_users', cases: 'awara_cases', activities: 'awara_activities', 
     session: 'awara_session', customer_notes: 'awara_customer_notes',
     seen: 'awara_seen', koperasi: 'awara_koperasi', announcements: 'awara_announcements',
-    settings: 'awara_settings'
+    settings: 'awara_settings', branches: 'awara_branches'
   },
   
   get(key, def = []) {
@@ -1243,6 +1256,7 @@ const DB = {
   seed(force = false) {
     if (!force && this.get(this.K.users).length > 0) return;
     this.set(this.K.users, SEED_USERS);
+    this.set(this.K.branches, SEED_BRANCHES);
     this.set(this.K.cases, generateSeedCases());
     this.set(this.K.activities, generateSeedActivities());
     this.set(this.K.customer_notes, {});
@@ -1255,6 +1269,11 @@ const DB = {
   // Users
   users() { return this.get(this.K.users); },
   user(id) { return this.users().find(u => u.id === id); },
+
+  // Branches
+  branches() { return this.get(this.K.branches, SEED_BRANCHES); },
+  branch(id) { return this.branches().find(b => b.id === id); },
+  saveBranches(list) { this.set(this.K.branches, list); },
   updateUser(id, updates) {
     const users = this.users();
     const idx = users.findIndex(u => u.id === id);
@@ -1319,6 +1338,7 @@ const DB = {
     const newCase = { 
       id: 'c' + Date.now(), 
       ...data,
+      branch_id: data.branch_id || this.user(data.source_cs_id)?.branch_id || null,
       is_duplicate: isDuplicate,
       duplicate_of: isDuplicate ? originalCase.id : null,
       original_keyer: isDuplicate ? originalCase.source_cs_id : data.source_cs_id,
@@ -1580,6 +1600,8 @@ const Logic = {
     let cases = DB.cases();
     if (opts.csId) cases = cases.filter(c => c.source_cs_id === opts.csId);
     if (opts.leaderId) cases = cases.filter(c => c.leader_id === opts.leaderId);
+    // Branch filter: if branchId specified, only show that branch's cases
+    if (opts.branchId) cases = cases.filter(c => c.branch_id === opts.branchId);
     return cases;
   },
   
@@ -1729,11 +1751,12 @@ const Logic = {
   },
   
   // Company-wide stats
-  companyStats() {
-    const payslipCases = this.monthlyPayslipCases();
-    const submitCases = this.monthlySubmitCases();
-    const disburseCases = this.monthlyDisburseCases();
-    const rejectCases = this.monthlyRejectCases();
+  companyStats(branchId = null) {
+    const opts = branchId ? { branchId } : {};
+    const payslipCases = this.monthlyPayslipCases(opts);
+    const submitCases = this.monthlySubmitCases(opts);
+    const disburseCases = this.monthlyDisburseCases(opts);
+    const rejectCases = this.monthlyRejectCases(opts);
     
     const total = payslipCases.length;
     const submitted = submitCases.length;
@@ -2080,7 +2103,11 @@ const Logic = {
     if (Permissions.isAdminLevel(user)) {
       // Admin/Manager: count of new payslip in last 24h, pending cases needing review
       const recentCutoff = Date.now() - 24 * 60 * 60 * 1000;
-      const newCases = DB.cases().filter(c => 
+      let allCases = DB.cases();
+      if (!Permissions.canViewAllBranches(user)) {
+        allCases = allCases.filter(c => c.branch_id === user.branch_id);
+      }
+      const newCases = allCases.filter(c => 
         c.status === 'new' && new Date(c.date_payslip).getTime() > recentCutoff
       ).length;
       count = newCases;
@@ -2279,7 +2306,7 @@ const App = {
       <section id="screen-login" class="screen">
         <div class="login-header">
           <div class="login-awara">AWARA</div>
-          <div class="login-tagline">Sdn Bhd · Penang</div>
+          <div class="login-tagline">Sdn Bhd </div>
           <div class="login-sub">GOAL MANAGEMENT SYSTEM</div>
         </div>
         <form class="login-form" onsubmit="event.preventDefault(); App.doLogin();">
@@ -2295,7 +2322,7 @@ const App = {
           <div class="login-error" id="login-error"></div>
         </form>
         <div class="login-footer">
-          AWARA Sdn Bhd · Penang Malaysia${isDev ? '<br><span style="opacity:0.5;">DEV: ANIS / FAIZAH / WILSON / password 1234</span>' : ''}
+          AWARA Sdn Bhd · Malaysia${isDev ? '<br><span style="opacity:0.5;">DEV: ANIS / FAIZAH / WILSON / password 1234</span>' : ''}
         </div>
       </section>
     `;
@@ -2323,19 +2350,22 @@ const App = {
   // ============ TOP BAR ============
   topBar(user, title, subtitle) {
     const teamLeader = user.role === 'cs' ? DB.user(user.leader_id) : null;
+    const branchName = user.branch_id ? (DB.branch(user.branch_id)?.name || user.branch_id) : '';
+    const branchLabel = branchName ? ` · ${branchName}` : '';
     let roleTag = '';
-    if (user.role === 'admin') roleTag = 'BOSS · ALL ACCESS';
-    else if (user.role === 'manager') roleTag = 'MANAGER · ALL ACCESS';
-    else if (user.role === 'solo') roleTag = `SOLO LEADER · ${user.name.toUpperCase()}`;
-    else if (user.role === 'leader') roleTag = `TEAM LEADER · ${user.name.toUpperCase()}`;
-    else roleTag = `CS · TEAM ${teamLeader ? teamLeader.name.toUpperCase() : '—'}`;
+    if (user.role === 'hq') roleTag = 'HQ · ALL BRANCHES';
+    else if (user.role === 'admin') roleTag = `BOSS · ALL ACCESS${branchLabel}`;
+    else if (user.role === 'manager') roleTag = `MANAGER · ALL ACCESS${branchLabel}`;
+    else if (user.role === 'solo') roleTag = `SOLO LEADER · ${user.name.toUpperCase()}${branchLabel}`;
+    else if (user.role === 'leader') roleTag = `TEAM LEADER · ${user.name.toUpperCase()}${branchLabel}`;
+    else roleTag = `CS · TEAM ${teamLeader ? teamLeader.name.toUpperCase() : '—'}${branchLabel}`;
     
     return `
       <div class="top-bar">
         <div class="top-bar-row">
           <div class="logo">
             <div class="awara-mark">AWARA</div>
-            <div class="logo-text"><span class="sdn">${title || 'Sdn Bhd · Penang'}</span></div>
+            <div class="logo-text"><span class="sdn">${title || 'Sdn Bhd'}</span></div>
           </div>
           <div class="avatar">${initials(user.name)}</div>
         </div>
@@ -3844,7 +3874,8 @@ ${isAdminLike ? `
   
   // ============ ADMIN DASHBOARD ============
   renderAdminDashboard(user) {
-    const stats = Logic.companyStats();
+    const branchId = Permissions.canViewAllBranches(user) ? null : user.branch_id;
+    const stats = Logic.companyStats(branchId);
     const awards = Logic.awards();
     const teamRank = Logic.teamRanking();
     
@@ -4605,6 +4636,11 @@ ${isAdminLike ? `
     
     let cases = DB.cases();
     
+    // Branch filter: HQ sees all, others only see their own branch
+    if (!Permissions.canViewAllBranches(user)) {
+      cases = cases.filter(c => c.branch_id === user.branch_id);
+    }
+    
     // Staff filter (from clicking ranking row)
     if (filterStaff) {
       const staff = DB.user(filterStaff);
@@ -4876,7 +4912,11 @@ ${isAdminLike ? `
   
   // ============ ADMIN: MANAGE STAFF ============
   renderAdminStaff(user) {
-    const allUsers = DB.users();
+    let allUsers = DB.users();
+    // Non-HQ users only see staff from their own branch
+    if (!Permissions.canViewAllBranches(user)) {
+      allUsers = allUsers.filter(u => u.branch_id === user.branch_id);
+    }
     const managers = allUsers.filter(u => u.role === 'manager');
     const adminUsers = allUsers.filter(u => u.role === 'kerani');  // Admin role (kerani internal name)
     const leaders = allUsers.filter(u => u.role === 'leader');
@@ -4887,13 +4927,14 @@ ${isAdminLike ? `
     const userCard = (u) => {
       const leader = u.role === 'cs' ? DB.user(u.leader_id) : null;
       const teamSize = (u.role === 'leader') ? allUsers.filter(x => x.leader_id === u.id).length : 0;
+      const branchName = u.branch_id ? (DB.branch(u.branch_id)?.name || u.branch_id) : '';
       return `
         <div class="qa-card" onclick="App.editUser('${u.id}')">
           <div style="display: flex; align-items: center; gap: 12px;">
             <div class="team-avatar ${u.role === 'cs' ? 'cs' : ''}" style="width: 36px; height: 36px; font-size: 12px;">${initials(u.name)}</div>
             <div style="flex: 1;">
               <div class="qa-title">${u.name}${u.role === 'solo' ? ' <span class="solo-badge">Solo</span>' : ''}</div>
-              <div class="qa-sub">${ROLE_LABELS[u.role]}${leader ? ` · Team ${leader.name}` : ''}${teamSize > 0 ? ` · ${teamSize} CS` : ''}</div>
+              <div class="qa-sub">${ROLE_LABELS[u.role]}${leader ? ` · Team ${leader.name}` : ''}${teamSize > 0 ? ` · ${teamSize} CS` : ''}${branchName ? ` · ${branchName}` : ''}</div>
             </div>
             <div style="color: var(--ink-3); font-size: 18px;">></div>
           </div>
@@ -4939,6 +4980,7 @@ ${isAdminLike ? `
     const u = DB.user(userId);
     if (!u) return;
     const allLeaders = DB.users().filter(x => x.role === 'leader');
+    const branches = DB.branches().filter(b => b.id !== 'hq');
     
     showModal(`
       <div class="modal-title">Edit Staff</div>
@@ -4947,6 +4989,13 @@ ${isAdminLike ? `
       <div class="form-group">
         <label>Name</label>
         <input type="text" id="eu-name" value="${u.name}">
+      </div>
+
+      <div class="form-group">
+        <label>Branch</label>
+        <select id="eu-branch">
+          ${branches.map(b => `<option value="${b.id}" ${u.branch_id === b.id ? 'selected' : ''}>${b.name}</option>`).join('')}
+        </select>
       </div>
       
       <div class="form-group">
@@ -4987,11 +5036,13 @@ ${isAdminLike ? `
     const role = document.querySelector('#eu-role .case-type-pill.active').dataset.val;
     const leaderId = document.getElementById('eu-leader').value;
     const pass = document.getElementById('eu-pass').value;
+    const branchId = document.getElementById('eu-branch')?.value;
     
     if (!name) { toast('Name required'); return; }
     if (role === 'cs' && !leaderId) { toast('Pilih Team Leader untuk CS'); return; }
     
     const updates = { name, role };
+    if (branchId) updates.branch_id = branchId;
     updates.leader_id = role === 'cs' ? leaderId : null;
     if (pass) updates.password = pass;
     
@@ -5011,6 +5062,7 @@ ${isAdminLike ? `
   
   addNewUser() {
     const allLeaders = DB.users().filter(x => x.role === 'leader');
+    const branches = DB.branches().filter(b => b.id !== 'hq'); // Don't assign staff to HQ branch
     showModal(`
       <div class="modal-title">Add New Staff</div>
       <div class="modal-sub">Create new CS or Leader account</div>
@@ -5023,6 +5075,14 @@ ${isAdminLike ? `
       <div class="form-group">
         <label>Name ID (login) — leave blank to auto-generate from name</label>
         <input type="text" id="nu-id" placeholder="e.g. AHMAD" style="text-transform: uppercase;" autocomplete="off">
+      </div>
+
+      <div class="form-group">
+        <label>Branch *</label>
+        <select id="nu-branch">
+          <option value="">Pilih Branch...</option>
+          ${branches.map(b => `<option value="${b.id}">${b.name}</option>`).join('')}
+        </select>
       </div>
       
       <div class="form-group">
@@ -5075,6 +5135,7 @@ ${isAdminLike ? `
       const roleEl = document.querySelector('#nu-role .case-type-pill.active');
       const leaderEl = document.getElementById('nu-leader');
       const passEl = document.getElementById('nu-pass');
+      const branchEl = document.getElementById('nu-branch');
       
       if (!nameEl || !roleEl) { 
         toast('Form error · pls refresh & try again'); 
@@ -5086,8 +5147,10 @@ ${isAdminLike ? `
       const role = roleEl.dataset.val;
       const leaderId = leaderEl?.value || '';
       const pass = (passEl?.value || '1234');
+      const branchId = branchEl?.value || '';
       
       if (!name) { toast('Name diperlukan'); nameEl.focus(); return; }
+      if (!branchId) { toast('Pilih Branch untuk staff ini'); branchEl?.focus(); return; }
       
       // Auto-generate ID from name if blank
       if (!id) {
@@ -5110,7 +5173,8 @@ ${isAdminLike ? `
       
       // Save new user via centralized method (writes localStorage + Firestore atomically)
       const newUser = { 
-        id, name, role, 
+        id, name, role,
+        branch_id: branchId,
         leader_id: role === 'cs' ? leaderId : null, 
         password: pass,
         created_at: Date.now()
@@ -6104,6 +6168,22 @@ ${isAdminLike ? `
       <div class="info-banner info" style="margin: 0 20px 14px;">
         <strong>Edit any setting below.</strong> Changes apply to ALL users immediately after Save. No deploy / no code needed.
       </div>
+
+      <!-- BRANCH MANAGEMENT -->
+      <div class="section-header"><div class="section-title">🏢 Manage Branches</div></div>
+      <div style="padding: 0 20px 4px;">
+        ${DB.branches().filter(b => b.id !== 'hq').map(b => `
+          <div class="qa-card" style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+            <div style="flex: 1; font-weight: 700;">${b.name}</div>
+            <button onclick="App.editBranch('${b.id}')" style="background: var(--cream-2); border: 1px solid var(--border-2); border-radius: 8px; padding: 6px 14px; font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;">Edit</button>
+            <button onclick="App.deleteBranch('${b.id}')" style="background: transparent; border: 1px solid rgba(184,66,58,0.3); color: var(--danger); border-radius: 8px; padding: 6px 14px; font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;">Delete</button>
+          </div>
+        `).join('')}
+        <div class="qa-card" onclick="App.addBranch()" style="cursor: pointer;">
+          <div class="qa-title">+ Add Branch</div>
+          <div class="qa-sub">Tambah cawangan baru</div>
+        </div>
+      </div>
       
       <div class="section-header"><div class="section-title">💰 Commission · CS Payslip Tiers</div></div>
       <div style="padding: 0 20px;">
@@ -6531,6 +6611,74 @@ ${isAdminLike ? `
     this.state.settingsDirty = false;
     // Revert color preview
     refreshSettings();
+    this.render();
+  },
+
+  // ============ BRANCH MANAGEMENT ============
+  addBranch() {
+    showModal(`
+      <div class="modal-title">Add Branch</div>
+      <div class="form-group">
+        <label>Branch Name *</label>
+        <input type="text" id="br-name" placeholder="e.g. Branch B" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label>Branch ID * (short, no spaces)</label>
+        <input type="text" id="br-id" placeholder="e.g. branch_b" autocomplete="off">
+      </div>
+      <button class="submit-btn" onclick="App.saveBranch()">Add Branch</button>
+      <button class="btn-secondary" onclick="hideModal()">Cancel</button>
+    `);
+    setTimeout(() => document.getElementById('br-name')?.focus(), 100);
+  },
+
+  saveBranch() {
+    const name = document.getElementById('br-name').value.trim();
+    let id = document.getElementById('br-id').value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (!name || !id) { toast('Name dan ID diperlukan'); return; }
+    const branches = DB.branches();
+    if (branches.find(b => b.id === id)) { toast('Branch ID sudah wujud'); return; }
+    branches.push({ id, name });
+    DB.saveBranches(branches);
+    hideModal();
+    toast('Branch "' + name + '" added');
+    this.render();
+  },
+
+  editBranch(branchId) {
+    const b = DB.branch(branchId);
+    if (!b) return;
+    showModal(`
+      <div class="modal-title">Edit Branch</div>
+      <div class="form-group">
+        <label>Branch Name</label>
+        <input type="text" id="br-edit-name" value="${b.name}">
+      </div>
+      <button class="submit-btn" onclick="App.saveEditBranch('${branchId}')">Save</button>
+      <button class="btn-secondary" onclick="hideModal()">Cancel</button>
+    `);
+  },
+
+  saveEditBranch(branchId) {
+    const name = document.getElementById('br-edit-name').value.trim();
+    if (!name) { toast('Name diperlukan'); return; }
+    const branches = DB.branches().map(b => b.id === branchId ? { ...b, name } : b);
+    DB.saveBranches(branches);
+    hideModal();
+    toast('Branch updated');
+    this.render();
+  },
+
+  deleteBranch(branchId) {
+    const staffInBranch = DB.users().filter(u => u.branch_id === branchId);
+    if (staffInBranch.length > 0) {
+      toast(`Tidak boleh delete · ${staffInBranch.length} staff masih dalam branch ini`);
+      return;
+    }
+    if (!confirm('Delete branch ini?')) return;
+    const branches = DB.branches().filter(b => b.id !== branchId);
+    DB.saveBranches(branches);
+    toast('Branch deleted');
     this.render();
   },
   
