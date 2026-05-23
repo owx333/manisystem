@@ -3879,7 +3879,7 @@ ${isAdminLike ? `
 
     // Branch breakdown (HQ only)
     const branches = DB.branches().filter(b => b.id !== 'hq');
-    const branchBreakdown = Permissions.canViewAllBranches(user) ? branches.map(b => {
+    const branchBreakdown = (Permissions.canViewAllBranches(user) || user.role === 'admin') ? branches.map(b => {
       const s = Logic.companyStats(b.id);
       return { branch: b, stats: s };
     }) : null;
