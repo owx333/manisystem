@@ -970,48 +970,46 @@ const ROLE_LABELS = {
 // Centralized permission checks. Use everywhere instead of hardcoded role checks.
 // Role hierarchy: hq(all branches) > admin(Boss) > manager > kerani(Admin) > leader/solo > cs
 const Permissions = {
-  // HQ: can see ALL branches, cannot be deleted/edited by branch admin
+  // HQ: can see ALL branches, same view/edit power as admin but cannot change settings
   isHQ: u => u?.role === 'hq',
   
   // Can see all branches data (HQ only)
   canViewAllBranches: u => u?.role === 'hq',
 
   // Can DELETE customer data, settings, users — Boss only
-  canDelete: u => u?.role === 'admin',
+  canDelete: u => ['admin', 'hq'].includes(u?.role),
   
-  // Can see Ranking screens (monthly leaderboard, awards, etc.) — Boss + Manager only
-  canSeeRanking: u => u?.role === 'admin' || u?.role === 'manager',
+  // Can see Ranking screens (monthly leaderboard, awards, etc.) — Boss + Manager + HQ
+  canSeeRanking: u => ['admin', 'manager', 'hq'].includes(u?.role),
   
   // Can EDIT customer info (Stage 1 fields like name/IC/phone/salary)
-  // Boss + Manager + Kerani (Admin) + Leader + Solo
   canEditCustomerInfo: u => ['admin', 'manager', 'kerani', 'leader', 'solo', 'hq'].includes(u?.role),
   
-  // Can edit ANY case (stage 3, status updates) regardless of who owns it — Boss + Manager only
-  // (Kerani can edit info but not status flow)
+  // Can edit ANY case (stage 3, status updates) regardless of who owns it
   canEditAllCases: u => ['admin', 'manager', 'hq'].includes(u?.role),
   
-  // Can manage Staff (add/edit/delete users) — Boss + Manager
-  canManageStaff: u => ['admin', 'manager'].includes(u?.role),
+  // Can manage Staff (add/edit/delete users) — Boss + Manager + HQ
+  canManageStaff: u => ['admin', 'manager', 'hq'].includes(u?.role),
   
-  // Can manage Koperasi packages — Boss + Manager
-  canManageKoperasi: u => ['admin', 'manager'].includes(u?.role),
+  // Can manage Koperasi packages — Boss + Manager + HQ
+  canManageKoperasi: u => ['admin', 'manager', 'hq'].includes(u?.role),
   
-  // Can change System Settings — Boss only
+  // Can change System Settings — Boss only (NOT HQ, NOT Manager)
   canEditSettings: u => u?.role === 'admin',
   
-  // Can post Announcements — Boss + Manager
-  canAnnounce: u => ['admin', 'manager'].includes(u?.role),
+  // Can post Announcements — Boss + Manager + HQ
+  canAnnounce: u => ['admin', 'manager', 'hq'].includes(u?.role),
   
-  // Can export reports — Boss + Manager (Kerani can export customer data too)
-  canExport: u => ['admin', 'manager', 'kerani'].includes(u?.role),
+  // Can export reports — Boss + Manager + Kerani + HQ
+  canExport: u => ['admin', 'manager', 'kerani', 'hq'].includes(u?.role),
   
-  // Does the user have an admin-like dashboard? — Boss + Manager + Kerani + HQ
+  // Does the user have an admin-like dashboard?
   isAdminLevel: u => ['admin', 'manager', 'kerani', 'hq'].includes(u?.role),
   
-  // Can see all cases across teams — Boss + Manager + Kerani + HQ
+  // Can see all cases across teams
   canSeeAllCases: u => ['admin', 'manager', 'kerani', 'hq'].includes(u?.role),
   
-  // Kerani-specific: limited to customer board only (no rankings/staff/settings/etc)
+  // Kerani-specific: limited to customer board only
   isKeraniOnly: u => u?.role === 'kerani'
 };
 
@@ -2105,7 +2103,7 @@ const Logic = {
       const recentCutoff = Date.now() - 24 * 60 * 60 * 1000;
       let allCases = DB.cases();
       if (!Permissions.canViewAllBranches(user)) {
-        allCases = allCases.filter(c => c.branch_id === user.branch_id);
+        allCases = allCases.filter(c => !c.branch_id || c.branch_id === user.branch_id);
       }
       const newCases = allCases.filter(c => 
         c.status === 'new' && new Date(c.date_payslip).getTime() > recentCutoff
@@ -4700,7 +4698,7 @@ ${isAdminLike ? `
     
     // Branch filter: HQ sees all, others only see their own branch
     if (!Permissions.canViewAllBranches(user)) {
-      cases = cases.filter(c => c.branch_id === user.branch_id);
+      cases = cases.filter(c => !c.branch_id || c.branch_id === user.branch_id);
     }
     
     // Staff filter (from clicking ranking row)
@@ -4975,9 +4973,9 @@ ${isAdminLike ? `
   // ============ ADMIN: MANAGE STAFF ============
   renderAdminStaff(user) {
     let allUsers = DB.users();
-    // Non-HQ users only see staff from their own branch
+    // Non-HQ users only see staff from their own branch (also show users without branch_id assigned yet)
     if (!Permissions.canViewAllBranches(user)) {
-      allUsers = allUsers.filter(u => u.branch_id === user.branch_id);
+      allUsers = allUsers.filter(u => !u.branch_id || u.branch_id === user.branch_id);
     }
     const managers = allUsers.filter(u => u.role === 'manager');
     const adminUsers = allUsers.filter(u => u.role === 'kerani');  // Admin role (kerani internal name)
@@ -6898,6 +6896,32 @@ async function bootstrap() {
     // No cloud - just seed local
     DB.seed();
   }
+  
+  // ── Migration: patch existing users missing branch_id, add HQ user if missing ──
+  (() => {
+    let users = DB.users();
+    let changed = false;
+
+    // Add HQ user if not exists
+    if (!users.find(u => u.role === 'hq')) {
+      users.push({ id: 'hq', name: 'HQ', role: 'hq', branch_id: 'hq', leader_id: null, password: '1234' });
+      changed = true;
+    }
+
+    // Ensure branches exist in storage
+    if (!DB.get(DB.K.branches, null) || DB.branches().length === 0) {
+      DB.saveBranches(SEED_BRANCHES);
+    }
+
+    // Patch users missing branch_id (existing users before branch feature)
+    const defaultBranch = DB.branches().find(b => b.id !== 'hq')?.id || 'branch_a';
+    users = users.map(u => {
+      if (!u.branch_id) { changed = true; return { ...u, branch_id: u.role === 'hq' ? 'hq' : defaultBranch }; }
+      return u;
+    });
+
+    if (changed) DB.set(DB.K.users, users);
+  })();
   
   // Refresh dynamic LOAN_PACKAGES from DB.koperasi() + Settings from DB.settings()
   refreshPackages();
