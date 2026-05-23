@@ -5868,6 +5868,10 @@ ${isAdminLike ? `
             ${LOAN_PACKAGES.map(p => `<option value="${p.id}" ${selectedPkg === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
           </select>
         </div>
+        <div class="form-group">
+          <label>Tarikh Spesifik (untuk Daily Submission)</label>
+          <input type="date" id="exp-date" value="${this.state.exportDate || ''}" onchange="App.state.exportDate = this.value; App.render();" style="width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-2); font-family: inherit; font-size: 13px;">
+          ${this.state.exportDate ? `<div style="font-size: 11px; color: var(--ink-3); margin-top: 4px;">✓ Filter by date aktif · <span onclick="App.state.exportDate = null; App.render();" style="color: var(--danger); cursor: pointer; font-weight: 700;">Clear ✕</span></div>` : `<div style="font-size: 11px; color: var(--ink-3); margin-top: 4px;">Kosong = guna bulan yang dipilih di atas</div>`}
       </div>
       
       <div class="section-header"><div class="section-title">Generate Report</div></div>
@@ -5879,6 +5883,10 @@ ${isAdminLike ? `
         <div class="qa-card" onclick="App.exportReport('submitted')">
           <div class="qa-title">📋 Report B · All Submitted Cases</div>
           <div class="qa-sub">Date, Customer, IC, Package, Loan, KFI, Status</div>
+        </div>
+        <div class="qa-card" onclick="App.exportReport('daily-submission')" style="border-left: 4px solid #2563a8;">
+          <div class="qa-title">📋 Report D · Daily Submission</div>
+          <div class="qa-sub">Full HQ format · Pilih tarikh atau bulan</div>
         </div>
         <div class="qa-card" onclick="App.exportReport('disbursed')">
           <div class="qa-title">💰 Report C · Disbursement List</div>
@@ -5997,6 +6005,67 @@ ${isAdminLike ? `
       });
       rows.push([]);
       rows.push(['', '', '', '', 'TOTAL:', '', '', totalDisburse.toFixed(0)]);
+    }
+    if (type === 'daily-submission') {
+      const selectedDate = this.state.exportDate || null;
+      filename = selectedDate
+        ? `AWARA_Daily_Submission_${selectedDate}.csv`
+        : `AWARA_Daily_Submission_${ym}.csv`;
+
+      let cases = DB.cases();
+      if (staff !== 'all') cases = cases.filter(c => c.source_cs_id === staff || c.leader_id === staff);
+      if (pkg !== 'all') cases = cases.filter(c => c.package_id === pkg);
+
+      if (selectedDate) {
+        cases = cases.filter(c =>
+          (c.date_submitted && c.date_submitted.slice(0,10) === selectedDate) ||
+          (c.date_disbursed && c.date_disbursed.slice(0,10) === selectedDate) ||
+          (c.date_payslip && c.date_payslip.slice(0,10) === selectedDate)
+        );
+      } else {
+        cases = cases.filter(c =>
+          (c.date_submitted && c.date_submitted.startsWith(ym)) ||
+          (c.date_disbursed && c.date_disbursed.startsWith(ym)) ||
+          (c.date_payslip && c.date_payslip.startsWith(ym))
+        );
+      }
+
+      cases.sort((a,b) => (a.date_submitted || a.date_payslip || '').localeCompare(b.date_submitted || b.date_payslip || ''));
+
+      rows.push(['DAILY SUBMISSION', selectedDate || ym]);
+      rows.push(['Generated:', new Date().toLocaleString('en-MY')]);
+      rows.push([]);
+      rows.push(['NO', 'DATE EMAIL', 'STAFF', 'NAMA CUSTOMER', 'NO IC', 'NO H/P', 'PACKAGE', 'TENURE', 'LOAN AMOUNT', 'PAYOUT (RM)', 'ANM', 'HRMIS', 'APPROVED AMOUNT', 'APPROVED DATE', 'DISBURSE DATE', 'MAJIKAN', 'DATE POSTAGE', 'POSTAGE NUMBER', 'DATE RECEIVE', 'STATUS / REMARK', 'REMARK ADMIN']);
+
+      let no = 1;
+      cases.forEach(c => {
+        const cs = DB.user(c.source_cs_id);
+        const p = LOAN_PACKAGES.find(x => x.id === c.package_id);
+        const remarks = (c.remarks || []).map(r => r.text).join(' | ');
+        rows.push([
+          no++,
+          c.date_email || '',
+          cs?.name || '',
+          c.customer_name || '',
+          c.ic || '',
+          c.phone || '',
+          p?.name || '',
+          c.tenor || '',
+          (c.loan_amount || 0).toFixed(2),
+          (c.disburse_amount || c.approved_amount || c.loan_amount || 0).toFixed(2),
+          c.amm_password || '',
+          c.hrmis_password || '',
+          (c.approved_amount || 0).toFixed(2),
+          c.date_approved || '',
+          c.date_disbursed || '',
+          c.majikan || '',
+          c.date_postage || '',
+          c.postage_number || '',
+          c.date_receive || '',
+          STATUS_LABELS[c.status] + (remarks ? ' · ' + remarks : ''),
+          c.remark_admin || ''
+        ]);
+      });
     }
     
     if (rows.length <= 4) { toast('No data for this filter'); return; }
