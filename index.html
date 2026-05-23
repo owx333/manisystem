@@ -2550,12 +2550,12 @@ const App = {
     
     // Get base cases (mine or team)
     let cases;
-    if (isLeader && (this.state.tabState.cases || 'mine') === 'team') {
-      // Use ALL cases from team, not just monthly
-      cases = DB.cases().filter(c => c.leader_id === user.id || c.source_cs_id === user.id);
-    } else if (isLeader) {
-      cases = DB.cases().filter(c => c.source_cs_id === user.id || c.leader_id === user.id);
-    } else {
+if (isLeader && (this.state.tabState.cases || 'mine') === 'team') {
+  // Use ALL cases from team, not just monthly
+  cases = DB.cases().filter(c => c.leader_id === user.id);
+} else if (isLeader) {
+  cases = DB.cases().filter(c => c.source_cs_id === user.id);
+} else {
       cases = DB.cases().filter(c => c.source_cs_id === user.id);
     }
     
