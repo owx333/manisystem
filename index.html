@@ -4680,9 +4680,10 @@ ${isAdminLike ? `
     
     let cases = DB.cases();
     
-    // Branch filter: HQ sees all, others only see their own branch
+    // Branch filter: HQ sees all branches, everyone else only sees their own branch
+    // Note: cases without branch_id are treated as belonging to the first non-HQ branch
     if (!Permissions.canViewAllBranches(user)) {
-      cases = cases.filter(c => !c.branch_id || c.branch_id === user.branch_id);
+      cases = cases.filter(c => c.branch_id === user.branch_id || (!c.branch_id && user.branch_id === DB.branches().find(b => b.id !== 'hq')?.id));
     }
     
     // Staff filter (from clicking ranking row)
@@ -5035,7 +5036,7 @@ ${isAdminLike ? `
         <input type="text" id="eu-name" value="${u.name}">
       </div>
 
-      <div class="form-group">
+      <div class="form-group" id="eu-branch-group" ${u.role === 'hq' ? 'style="display:none;"' : ''}>
         <label>Branch</label>
         <select id="eu-branch">
           ${branches.map(b => `<option value="${b.id}" ${u.branch_id === b.id ? 'selected' : ''}>${b.name}</option>`).join('')}
@@ -5045,13 +5046,13 @@ ${isAdminLike ? `
       <div class="form-group">
         <label>Role</label>
         <div class="case-type-pills" id="eu-role">
-          <div class="case-type-pill ${u.role === 'cs' ? 'active' : ''}" data-val="cs" onclick="App.pickRolePill(this, 'eu')">CS</div>
-          <div class="case-type-pill ${u.role === 'leader' ? 'active' : ''}" data-val="leader" onclick="App.pickRolePill(this, 'eu')">Team Leader</div>
-          <div class="case-type-pill ${u.role === 'solo' ? 'active' : ''}" data-val="solo" onclick="App.pickRolePill(this, 'eu')">Solo Leader</div>
-          <div class="case-type-pill ${u.role === 'manager' ? 'active' : ''}" data-val="manager" onclick="App.pickRolePill(this, 'eu')">Manager</div>
-          <div class="case-type-pill ${u.role === 'kerani' ? 'active' : ''}" data-val="kerani" onclick="App.pickRolePill(this, 'eu')">Admin</div>
-          <div class="case-type-pill ${u.role === 'admin' ? 'active' : ''}" data-val="admin" onclick="App.pickRolePill(this, 'eu')">Boss</div>
-          <div class="case-type-pill ${u.role === 'hq' ? 'active' : ''}" data-val="hq" onclick="App.pickRolePill(this, 'eu')">HQ</div>
+          <div class="case-type-pill ${u.role === 'cs' ? 'active' : ''}" data-val="cs" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='';">CS</div>
+          <div class="case-type-pill ${u.role === 'leader' ? 'active' : ''}" data-val="leader" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='';">Team Leader</div>
+          <div class="case-type-pill ${u.role === 'solo' ? 'active' : ''}" data-val="solo" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='';">Solo Leader</div>
+          <div class="case-type-pill ${u.role === 'manager' ? 'active' : ''}" data-val="manager" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='';">Manager</div>
+          <div class="case-type-pill ${u.role === 'kerani' ? 'active' : ''}" data-val="kerani" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='';">Admin</div>
+          <div class="case-type-pill ${u.role === 'admin' ? 'active' : ''}" data-val="admin" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='';">Boss</div>
+          <div class="case-type-pill ${u.role === 'hq' ? 'active' : ''}" data-val="hq" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='none';">HQ</div>
         </div>
       </div>
       
@@ -5081,7 +5082,7 @@ ${isAdminLike ? `
     const role = document.querySelector('#eu-role .case-type-pill.active').dataset.val;
     const leaderId = document.getElementById('eu-leader').value;
     const pass = document.getElementById('eu-pass').value;
-    const branchId = document.getElementById('eu-branch')?.value;
+    let branchId = role === 'hq' ? 'hq' : document.getElementById('eu-branch')?.value;
     
     if (!name) { toast('Name required'); return; }
     if (role === 'cs' && !leaderId) { toast('Pilih Team Leader untuk CS'); return; }
@@ -5122,7 +5123,7 @@ ${isAdminLike ? `
         <input type="text" id="nu-id" placeholder="e.g. AHMAD" style="text-transform: uppercase;" autocomplete="off">
       </div>
 
-      <div class="form-group">
+      <div class="form-group" id="nu-branch-group">
         <label>Branch *</label>
         <select id="nu-branch">
           <option value="">Pilih Branch...</option>
@@ -5133,13 +5134,13 @@ ${isAdminLike ? `
       <div class="form-group">
         <label>Role *</label>
         <div class="case-type-pills" id="nu-role">
-          <div class="case-type-pill active" data-val="cs" onclick="App.pickRolePill(this, 'nu')">CS</div>
-          <div class="case-type-pill" data-val="leader" onclick="App.pickRolePill(this, 'nu')">Team Leader</div>
-          <div class="case-type-pill" data-val="solo" onclick="App.pickRolePill(this, 'nu')">Solo Leader</div>
-          <div class="case-type-pill" data-val="manager" onclick="App.pickRolePill(this, 'nu')">Manager</div>
-          <div class="case-type-pill" data-val="kerani" onclick="App.pickRolePill(this, 'nu')">Admin</div>
-          <div class="case-type-pill" data-val="admin" onclick="App.pickRolePill(this, 'nu')">Boss</div>
-          <div class="case-type-pill" data-val="hq" onclick="App.pickRolePill(this, 'nu')">HQ</div>
+          <div class="case-type-pill active" data-val="cs" onclick="App.pickRolePill(this, 'nu'); document.getElementById('nu-branch-group').style.display='';">CS</div>
+          <div class="case-type-pill" data-val="leader" onclick="App.pickRolePill(this, 'nu'); document.getElementById('nu-branch-group').style.display='';">Team Leader</div>
+          <div class="case-type-pill" data-val="solo" onclick="App.pickRolePill(this, 'nu'); document.getElementById('nu-branch-group').style.display='';">Solo Leader</div>
+          <div class="case-type-pill" data-val="manager" onclick="App.pickRolePill(this, 'nu'); document.getElementById('nu-branch-group').style.display='';">Manager</div>
+          <div class="case-type-pill" data-val="kerani" onclick="App.pickRolePill(this, 'nu'); document.getElementById('nu-branch-group').style.display='';">Admin</div>
+          <div class="case-type-pill" data-val="admin" onclick="App.pickRolePill(this, 'nu'); document.getElementById('nu-branch-group').style.display='';">Boss</div>
+          <div class="case-type-pill" data-val="hq" onclick="App.pickRolePill(this, 'nu'); document.getElementById('nu-branch-group').style.display='none';">HQ</div>
         </div>
       </div>
       
@@ -5193,7 +5194,10 @@ ${isAdminLike ? `
       const role = roleEl.dataset.val;
       const leaderId = leaderEl?.value || '';
       const pass = (passEl?.value || '1234');
-      const branchId = branchEl?.value || '';
+      let branchId = branchEl?.value || '';
+      
+      // HQ role doesn't need a branch selection - auto-assign to 'hq'
+      if (role === 'hq') branchId = 'hq';
       
       if (!name) { toast('Name diperlukan'); nameEl.focus(); return; }
       if (!branchId) { toast('Pilih Branch untuk staff ini'); branchEl?.focus(); return; }
