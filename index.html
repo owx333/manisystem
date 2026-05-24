@@ -4817,7 +4817,7 @@ ${isAdminLike ? `
   
   // ============ ADMIN: CUSTOMER DATABASE (Whole Company) ============
   renderAdminCustomers(user) {
-    const filterTime = this.state.filterState.adminCustTime || (Permissions.isAdminLevel(user) ? 'all' : 'month');
+    const filterTime = this.state.filterState.adminCustTime || 'month';
     const filterTeam = this.state.filterState.adminCustTeam || 'all';
     const filterTime = this.state.filterState.adminCustTime || 'month';
     const filterBranch = this.state.filterState.adminCustBranch || 'all';
