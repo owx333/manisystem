@@ -1425,24 +1425,42 @@ const DB = {
       const allUsers = this.users();
       const caseBranch = updatedCase.branch_id;
 
-if (editorRole === 'admin') {
-        // Boss/Admin edit → CS, Leader, all manager/kerani same branch
-        notify(updatedCase.source_cs_id);
+      // Notification rules (per role of editor):
+      // cs       → team leader (leader_id), manager (same branch)
+      // solo     → team leader (same branch), manager (same branch), admin/kerani (same branch)
+      // leader   → manager (same branch), admin/kerani (same branch)
+      // kerani   → manager (same branch), team leader (same branch), solo (same branch), hq
+      // manager  → admin/kerani (same branch), team leader (same branch), solo (same branch), hq
+      // hq       → admin/kerani (same branch), boss/admin (all), manager (same branch)
+      // admin    → admin/kerani (same branch), hq (all), manager (same branch)
+      if (editorRole === 'cs') {
         notify(updatedCase.leader_id);
-        allUsers.filter(u => ['manager', 'kerani'].includes(u.role) && u.branch_id === caseBranch)
-          .forEach(u => notify(u.id));
-      } else if (['manager', 'kerani'].includes(editorRole)) {
-        // Manager/Kerani edit → CS, Leader, admin, other manager same branch
-        notify(updatedCase.source_cs_id);
-        notify(updatedCase.leader_id);
+        allUsers.filter(u => u.role === 'manager' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+      } else if (editorRole === 'solo') {
+        allUsers.filter(u => u.role === 'leader' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+        allUsers.filter(u => u.role === 'manager' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+        allUsers.filter(u => u.role === 'kerani' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+      } else if (editorRole === 'leader') {
+        allUsers.filter(u => u.role === 'manager' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+        allUsers.filter(u => u.role === 'kerani' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+      } else if (editorRole === 'kerani') {
+        allUsers.filter(u => u.role === 'manager' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+        allUsers.filter(u => u.role === 'leader' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+        allUsers.filter(u => u.role === 'solo' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+        allUsers.filter(u => u.role === 'hq').forEach(u => notify(u.id));
+      } else if (editorRole === 'manager') {
+        allUsers.filter(u => u.role === 'kerani' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+        allUsers.filter(u => u.role === 'leader' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+        allUsers.filter(u => u.role === 'solo' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+        allUsers.filter(u => u.role === 'hq').forEach(u => notify(u.id));
+      } else if (editorRole === 'hq') {
+        allUsers.filter(u => u.role === 'kerani' && u.branch_id === caseBranch).forEach(u => notify(u.id));
         allUsers.filter(u => u.role === 'admin').forEach(u => notify(u.id));
-        allUsers.filter(u => ['manager', 'kerani'].includes(u.role) && u.branch_id === caseBranch)
-          .forEach(u => notify(u.id));
-      } else if (['leader', 'solo'].includes(editorRole)) {
-        // Leader edit → CS, branch admin/manager
-        notify(updatedCase.source_cs_id);
-        allUsers.filter(u => ['admin', 'manager'].includes(u.role) && u.branch_id === caseBranch)
-          .forEach(u => notify(u.id));
+        allUsers.filter(u => u.role === 'manager' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+      } else if (editorRole === 'admin') {
+        allUsers.filter(u => u.role === 'kerani' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+        allUsers.filter(u => u.role === 'hq').forEach(u => notify(u.id));
+        allUsers.filter(u => u.role === 'manager' && u.branch_id === caseBranch).forEach(u => notify(u.id));
       }
     }
     
@@ -6264,6 +6282,7 @@ ${isAdminLike ? `
         <div class="qa-card" onclick="App.exportReport('daily-submission')" style="border-left: 4px solid #2563a8;">
           <div class="qa-title">📋 Report D · Daily Submission</div>
           <div class="qa-sub">Full HQ format · Pilih tarikh atau bulan</div>
+        </div>
       </div>
     `;
   },
@@ -6335,11 +6354,14 @@ if (type === 'submitted') {
       rows.push(['Generated:', new Date().toLocaleString('en-MY')]);
       rows.push([]);
 
-      let cases = filterByDate(DB.cases(), 'date_submitted');
+      let cases = DB.cases().filter(c =>
+        filterByDate([c], 'date_submitted').length > 0 ||
+        filterByDate([c], 'date_payslip').length > 0
+      );
       if (staff !== 'all') cases = cases.filter(c => c.source_cs_id === staff || c.leader_id === staff);
       if (pkg !== 'all') cases = cases.filter(c => c.package_id === pkg);
       if (branchFilter) cases = cases.filter(c => c.branch_id === branchFilter);
-      cases.sort((a,b) => (a.leader_id||'').localeCompare(b.leader_id||'') || (a.source_cs_id||'').localeCompare(b.source_cs_id||'') || a.date_submitted.localeCompare(b.date_submitted));
+      cases.sort((a,b) => (a.leader_id||'').localeCompare(b.leader_id||'') || (a.source_cs_id||'').localeCompare(b.source_cs_id||'') || (a.date_submitted || a.date_payslip || '').localeCompare(b.date_submitted || b.date_payslip || ''));
 
       const staffGroups = {};
       cases.forEach(c => {
@@ -6371,11 +6393,14 @@ if (type === 'disbursed') {
       rows.push(['Generated:', new Date().toLocaleString('en-MY')]);
       rows.push([]);
 
-      let cases = filterByDate(DB.cases(), 'date_disbursed').filter(c => c.status === 'disbursed');
+      let cases = DB.cases().filter(c => c.status === 'disbursed').filter(c =>
+        filterByDate([c], 'date_disbursed').length > 0 ||
+        filterByDate([c], 'date_payslip').length > 0
+      );
       if (staff !== 'all') cases = cases.filter(c => c.source_cs_id === staff || c.leader_id === staff);
       if (pkg !== 'all') cases = cases.filter(c => c.package_id === pkg);
       if (branchFilter) cases = cases.filter(c => c.branch_id === branchFilter);
-      cases.sort((a,b) => (a.leader_id||'').localeCompare(b.leader_id||'') || (a.source_cs_id||'').localeCompare(b.source_cs_id||'') || a.date_disbursed.localeCompare(b.date_disbursed));
+      cases.sort((a,b) => (a.leader_id||'').localeCompare(b.leader_id||'') || (a.source_cs_id||'').localeCompare(b.source_cs_id||'') || (a.date_disbursed || a.date_payslip || '').localeCompare(b.date_disbursed || b.date_payslip || ''));
 
       const staffGroups = {};
       cases.forEach(c => {
