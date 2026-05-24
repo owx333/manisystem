@@ -1421,27 +1421,9 @@ const DB = {
         this.addNotification(updatedCase.source_cs_id, { title: notifTitle, body: notifBody, caseId: id });
       }
       // Notify Leader
-      // Notify all admin/boss in same branch
-      const sameBranchAdmins = this.users().filter(u => 
-        ['admin', 'manager'].includes(u.role) && 
-        u.branch_id === updatedCase.branch_id && 
-        u.id !== user?.id
-      );
-      sameBranchAdmins.forEach(admin => {
-        this.addNotification(admin.id, { title: notifTitle, body: notifBody, caseId: id });
-      });
       if (updatedCase.leader_id && updatedCase.leader_id !== user?.id) {
         this.addNotification(updatedCase.leader_id, { title: notifTitle, body: notifBody, caseId: id });
       }
-      // Notify all admin/boss in same branch
-      const sameBranchAdmins = this.users().filter(u => 
-        ['admin', 'manager'].includes(u.role) && 
-        u.branch_id === updatedCase.branch_id && 
-        u.id !== user?.id
-      );
-      sameBranchAdmins.forEach(admin => {
-        this.addNotification(admin.id, { title: notifTitle, body: notifBody, caseId: id });
-      });
     }
     
     return cases[idx];
@@ -6400,56 +6382,6 @@ if (type === 'disbursed') {
         });
         rows.push(['', '', '', 'TOTAL SUBMISSION', '', '', totalLoan.toFixed(2), totalKfi.toFixed(2)]);
         rows.push([]);
-      });
-    }
-    if (type === 'daily-submission') {
-      filename = `AWARA_Daily_Submission_${dateLabel}.csv`;
-
-      let cases = DB.cases();
-      if (staff !== 'all') cases = cases.filter(c => c.source_cs_id === staff || c.leader_id === staff);
-      if (pkg !== 'all') cases = cases.filter(c => c.package_id === pkg);
-
-      cases = cases.filter(c =>
-        filterByDate([c], 'date_submitted').length > 0 ||
-        filterByDate([c], 'date_disbursed').length > 0 ||
-        filterByDate([c], 'date_payslip').length > 0
-      );
-
-      cases.sort((a,b) => (a.date_submitted || a.date_payslip || '').localeCompare(b.date_submitted || b.date_payslip || ''));
-
-      rows.push(['DAILY SUBMISSION', dateLabel]);
-      rows.push(['Generated:', new Date().toLocaleString('en-MY')]);
-      rows.push([]);
-      rows.push(['NO', 'DATE EMAIL', 'STAFF', 'NAMA CUSTOMER', 'NO IC', 'NO H/P', 'PACKAGE', 'TENURE', 'LOAN AMOUNT', 'KFI', 'ANM', 'HRMIS', 'APPROVED AMOUNT', 'APPROVED DATE', 'DISBURSE DATE', 'MAJIKAN', 'DATE POSTAGE', 'POSTAGE NUMBER', 'DATE RECEIVE', 'STATUS / REMARK', 'REMARK ADMIN']);
-
-      let no = 1;
-      cases.forEach(c => {
-        const cs = DB.user(c.source_cs_id);
-        const p = LOAN_PACKAGES.find(x => x.id === c.package_id);
-        const remarks = (c.remarks || []).map(r => r.text).join(' | ');
-        rows.push([
-          no++,
-          c.date_email || '',
-          cs?.name || '',
-          c.customer_name || '',
-          c.ic || '',
-          c.phone || '',
-          p?.name || '',
-          c.tenor || '',
-          (c.loan_amount || 0).toFixed(2),
-          (c.payout || c.disburse_amount || c.approved_amount || c.loan_amount || 0).toFixed(2),
-          c.amm_password || '',
-          c.hrmis_password || '',
-          (c.approved_amount || 0).toFixed(2),
-          c.date_approved || '',
-          c.date_disbursed || '',
-          c.majikan || '',
-          c.date_postage || '',
-          c.postage_number || '',
-          c.date_receive || '',
-          STATUS_LABELS[c.status] + (remarks ? ' · ' + remarks : ''),
-          c.remark_admin || ''
-        ]);
       });
     }
     
