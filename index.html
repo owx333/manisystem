@@ -6214,10 +6214,17 @@ ${isAdminLike ? `
             ${LOAN_PACKAGES.map(p => `<option value="${p.id}" ${selectedPkg === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
           </select>
         </div>
-        <div class="form-group">
-          <label>Tarikh Spesifik (untuk Daily Submission)</label>
-          <input type="date" id="exp-date" value="${this.state.exportDate || ''}" onchange="App.state.exportDate = this.value; App.render();" style="width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-2); font-family: inherit; font-size: 13px;">
-          ${this.state.exportDate ? `<div style="font-size: 11px; color: var(--ink-3); margin-top: 4px;">✓ Filter by date aktif · <span onclick="App.state.exportDate = null; App.render();" style="color: var(--danger); cursor: pointer; font-weight: 700;">Clear ✕</span></div>` : `<div style="font-size: 11px; color: var(--ink-3); margin-top: 4px;">Kosong = guna bulan yang dipilih di atas</div>`}
+<div class="form-group">
+          <label>Date Range (semua report)</label>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <input type="date" id="exp-from" value="${this.state.exportFrom || ''}" onchange="App.state.exportFrom = this.value; App.render();" style="flex:1; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-2); font-family: inherit; font-size: 13px;">
+            <span style="color: var(--ink-3); font-size: 12px;">to</span>
+            <input type="date" id="exp-to" value="${this.state.exportTo || ''}" onchange="App.state.exportTo = this.value; App.render();" style="flex:1; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-2); font-family: inherit; font-size: 13px;">
+          </div>
+          ${(this.state.exportFrom || this.state.exportTo) ? `
+            <div style="font-size: 11px; color: var(--ink-3); margin-top: 4px;">✓ Date range aktif · <span onclick="App.state.exportFrom=null; App.state.exportTo=null; App.render();" style="color: var(--danger); cursor: pointer; font-weight: 700;">Clear ✕</span></div>
+          ` : `<div style="font-size: 11px; color: var(--ink-3); margin-top: 4px;">Kosong = guna bulan yang dipilih di atas</div>`}
+        </div>
       </div>
       
       <div class="section-header"><div class="section-title">Generate Report</div></div>
