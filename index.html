@@ -1425,23 +1425,21 @@ const DB = {
       const allUsers = this.users();
       const caseBranch = updatedCase.branch_id;
 
-      if (editorRole === 'hq') {
-        // HQ edit → CS, Leader, branch admin/manager/kerani, boss
+if (editorRole === 'admin') {
+        // Boss/Admin edit → CS, Leader, all manager/kerani same branch
         notify(updatedCase.source_cs_id);
         notify(updatedCase.leader_id);
-        allUsers.filter(u => ['admin', 'manager', 'kerani', 'boss'].includes(u.role) && u.branch_id === caseBranch)
+        allUsers.filter(u => ['manager', 'kerani'].includes(u.role) && u.branch_id === caseBranch)
           .forEach(u => notify(u.id));
-        allUsers.filter(u => u.role === 'boss').forEach(u => notify(u.id));
-      } else if (['admin', 'manager', 'kerani'].includes(editorRole)) {
-        // Branch admin/manager/kerani edit → CS, Leader, HQ, boss, other admin/manager same branch
+      } else if (['manager', 'kerani'].includes(editorRole)) {
+        // Manager/Kerani edit → CS, Leader, admin, other manager same branch
         notify(updatedCase.source_cs_id);
         notify(updatedCase.leader_id);
-        allUsers.filter(u => u.role === 'hq').forEach(u => notify(u.id));
-        allUsers.filter(u => u.role === 'boss').forEach(u => notify(u.id));
-        allUsers.filter(u => ['admin', 'manager'].includes(u.role) && u.branch_id === caseBranch)
+        allUsers.filter(u => u.role === 'admin').forEach(u => notify(u.id));
+        allUsers.filter(u => ['manager', 'kerani'].includes(u.role) && u.branch_id === caseBranch)
           .forEach(u => notify(u.id));
       } else if (['leader', 'solo'].includes(editorRole)) {
-        // Leader edit → CS, branch admin/manager, boss
+        // Leader edit → CS, branch admin/manager
         notify(updatedCase.source_cs_id);
         allUsers.filter(u => ['admin', 'manager'].includes(u.role) && u.branch_id === caseBranch)
           .forEach(u => notify(u.id));
