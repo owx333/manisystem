@@ -5166,12 +5166,14 @@ ${isAdminLike ? `
     if (!Permissions.canViewAllBranches(user)) {
       allUsers = allUsers.filter(u => !u.branch_id || u.branch_id === user.branch_id);
     }
+    const bossUsers = Permissions.canViewAllBranches(user) ? allUsers.filter(u => u.role === 'admin') : [];
+    const hqUsers = Permissions.canViewAllBranches(user) ? allUsers.filter(u => u.role === 'hq') : [];
     const managers = allUsers.filter(u => u.role === 'manager');
     const adminUsers = allUsers.filter(u => u.role === 'kerani');  // Admin role (kerani internal name)
     const leaders = allUsers.filter(u => u.role === 'leader');
     const solos = allUsers.filter(u => u.role === 'solo');
     const csUsers = allUsers.filter(u => u.role === 'cs');
-    const totalStaff = managers.length + adminUsers.length + leaders.length + solos.length + csUsers.length;
+    const totalStaff = bossUsers.length + hqUsers.length + managers.length + adminUsers.length + leaders.length + solos.length + csUsers.length;
     
     const userCard = (u) => {
       const leader = u.role === 'cs' ? DB.user(u.leader_id) : null;
@@ -5197,6 +5199,16 @@ ${isAdminLike ? `
         <strong>${totalStaff} staff total.</strong> Tap any staff to change role / reassign team / reset password.
       </div>
       
+      ${bossUsers.length > 0 ? `
+        <div class="section-header"><div class="section-title">Boss (${bossUsers.length})</div></div>
+        <div style="padding: 0 20px;">${bossUsers.map(userCard).join('')}</div>
+      ` : ''}
+
+      ${hqUsers.length > 0 ? `
+        <div class="section-header"><div class="section-title">HQ (${hqUsers.length})</div></div>
+        <div style="padding: 0 20px;">${hqUsers.map(userCard).join('')}</div>
+      ` : ''}
+
       ${managers.length > 0 ? `
         <div class="section-header"><div class="section-title">Manager (${managers.length})</div></div>
         <div style="padding: 0 20px;">${managers.map(userCard).join('')}</div>
