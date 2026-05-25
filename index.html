@@ -221,7 +221,7 @@ body.app-ready #app { opacity: 1; transition: opacity 0.2s; }
 .persona-bar button.active { background: var(--accent); color: var(--primary-dark); border-color: var(--accent); font-weight: 700; }
 
 .app { max-width: 480px; margin: 0 auto; background: var(--cream); min-height: calc(100vh - 40px); position: relative; box-shadow: 0 0 60px rgba(15, 81, 50, 0.08); }
-.screen { display: none; padding-bottom: 220px; }
+.screen { display: none; padding-bottom: 160px; }
 .screen.active { display: block; animation: fadeIn 0.3s ease; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -6266,7 +6266,7 @@ ${(this.state.exportFrom || this.state.exportTo) ? '<div style="font-size: 11px;
       </div>
       
       <div class="section-header"><div class="section-title">Generate Report</div></div>
-      <div style="padding: 0 20px 100px;">
+      <div style="padding: 0 20px 120px;">
         <div class="qa-card" onclick="App.exportReport('performance')">
           <div class="qa-title">📊 Report A · Per-Staff Performance</div>
           <div class="qa-sub">Each CS/Leader: Payslip / KPI / KFI / Reject / Commission</div>
