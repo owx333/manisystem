@@ -6259,9 +6259,7 @@ ${isAdminLike ? `
             <span style="color: var(--ink-3); font-size: 12px;">to</span>
             <input type="date" id="exp-to" value="${this.state.exportTo || ''}" onchange="App.state.exportTo = this.value; App.render();" style="flex:1; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-2); font-family: inherit; font-size: 13px;">
           </div>
-          ${(this.state.exportFrom || this.state.exportTo) ? `
-            <div style="font-size: 11px; color: var(--ink-3); margin-top: 4px;">✓ Date range aktif · <span onclick="App.state.exportFrom=null; App.state.exportTo=null; App.render();" style="color: var(--danger); cursor: pointer; font-weight: 700;">Clear ✕</span></div>
-          ` : `<div style="font-size: 11px; color: var(--ink-3); margin-top: 4px;">Kosong = guna bulan yang dipilih di atas</div>`}
+${(this.state.exportFrom || this.state.exportTo) ? '<div style="font-size: 11px; color: var(--ink-3); margin-top: 4px;">✓ Date range aktif · <span onclick=\'App.state.exportFrom=null; App.state.exportTo=null; App.render();\' style=\'color: var(--danger); cursor: pointer; font-weight: 700;\'>Clear ✕</span></div>' : '<div style="font-size: 11px; color: var(--ink-3); margin-top: 4px;">Kosong = guna bulan yang dipilih di atas</div>'}
         </div>
       </div>
       
