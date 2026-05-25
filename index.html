@@ -1024,7 +1024,7 @@ const SEED_BRANCHES = [
 
 const SEED_USERS = [
   { id: 'hq', name: 'HQ', role: 'hq', branch_id: 'hq', leader_id: null, password: '1234' },
-  { id: 'wilson', name: 'Wilson', role: 'admin', branch_id: 'branch_a', leader_id: null, password: '1234' },
+  { id: 'wilson', name: 'Wilson', role: 'admin', branch_id: 'hq', leader_id: null, password: '1234' },
   // Team Leaders (with CS under them)
   { id: 'ayna', name: 'Ayna', role: 'leader', branch_id: 'branch_a', leader_id: null, password: '1234' },
   { id: 'faizah', name: 'Faizah', role: 'leader', branch_id: 'branch_a', leader_id: null, password: '1234' },
@@ -5161,13 +5161,14 @@ ${isAdminLike ? `
   
   // ============ ADMIN: MANAGE STAFF ============
   renderAdminStaff(user) {
+    const isSuperUser = ['admin', 'hq'].includes(user.role);
     let allUsers = DB.users();
-    // Non-HQ users only see staff from their own branch (also show users without branch_id assigned yet)
-    if (!Permissions.canViewAllBranches(user)) {
+    // Boss + HQ see ALL staff across all branches; Manager sees own branch only
+    if (!isSuperUser) {
       allUsers = allUsers.filter(u => !u.branch_id || u.branch_id === user.branch_id);
     }
-    const bossUsers = Permissions.canViewAllBranches(user) ? allUsers.filter(u => u.role === 'admin') : [];
-    const hqUsers = Permissions.canViewAllBranches(user) ? allUsers.filter(u => u.role === 'hq') : [];
+    const bossUsers = isSuperUser ? allUsers.filter(u => u.role === 'admin') : [];
+    const hqUsers = isSuperUser ? allUsers.filter(u => u.role === 'hq') : [];
     const managers = allUsers.filter(u => u.role === 'manager');
     const adminUsers = allUsers.filter(u => u.role === 'kerani');  // Admin role (kerani internal name)
     const leaders = allUsers.filter(u => u.role === 'leader');
