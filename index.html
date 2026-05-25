@@ -400,27 +400,26 @@ body.app-ready #app { opacity: 1; transition: opacity 0.2s; }
 
 /* Rankings */
 .ranking-card { background: var(--cream-2); border-radius: 13px; padding: 12px 16px; margin: 0 20px 8px; border: 1px solid var(--border-2); display: flex; align-items: center; gap: 14px; }
-.ranking-card.gold { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: var(--cream); border: none; }
+/* .ranking-card.gold { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: var(--cream); border: none; } */
 .rank-num { font-family: 'Fraunces', serif; font-size: 28px; font-weight: 400; color: var(--accent-deep); line-height: 1; width: 32px; flex-shrink: 0; font-style: italic; }
-.ranking-card.gold .rank-num { color: var(--accent); }
+/* .ranking-card.gold .rank-num { color: var(--accent); } */
 .rank-info { flex: 1; }
 .rank-name { font-weight: 700; font-size: 14px; color: var(--ink); }
-.ranking-card.gold .rank-name { color: var(--cream); }
+/* .ranking-card.gold .rank-name { color: var(--cream); } */
 .rank-sub { font-size: 10px; color: var(--ink-3); margin-top: 2px; }
-.ranking-card.gold .rank-sub { color: var(--accent-light); }
+/* .ranking-card.gold .rank-sub { color: var(--accent-light); } */
 .rank-stats { text-align: right; flex-shrink: 0; }
 .rank-stats .pri { font-family: 'Fraunces', serif; font-size: 26px; font-weight: 500; color: var(--primary); line-height: 1; letter-spacing: -0.02em; }
-.ranking-card.gold .rank-stats .pri { color: var(--accent); }
+/* .ranking-card.gold .rank-stats .pri { color: var(--accent); } */
 .rank-stats .pri-label { font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.15em; color: var(--ink-3); font-weight: 700; margin-top: 1px; }
-.ranking-card.gold .rank-stats .pri-label { color: var(--accent-light); }
 .rank-stats .sec { font-size: 10px; color: var(--ink-2); margin-top: 4px; font-weight: 600; }
 .rank-stats .sec .dim { color: var(--ink-3); font-weight: 500; }
-.ranking-card.gold .rank-stats .sec { color: var(--accent-light); }
-.ranking-card.gold .rank-stats .sec .dim { color: rgba(224, 189, 137, 0.7); }
+/* .ranking-card.gold .rank-stats .sec { color: var(--accent-light); } */
+/* .ranking-card.gold .rank-stats .sec .dim { color: rgba(224, 189, 137, 0.7); } */
 .rank-stats .big { font-family: 'Fraunces', serif; font-size: 19px; font-weight: 500; color: var(--primary); line-height: 1; }
-.ranking-card.gold .rank-stats .big { color: var(--accent); }
+/* .ranking-card.gold .rank-stats .big { color: var(--accent); } */
 .rank-stats .small { font-size: 10px; color: var(--ink-3); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
-.ranking-card.gold .rank-stats .small { color: var(--accent-light); }
+/* .ranking-card.gold .rank-stats .small { color: var(--accent-light); } */
 .solo-badge { display: inline-block; font-size: 9px; padding: 2px 6px; background: var(--accent); color: var(--primary-dark); border-radius: 4px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; margin-left: 6px; vertical-align: middle; }
 
 /* Awards */
@@ -4296,24 +4295,24 @@ ${isAdminLike ? `
           <div class="rank-sub" style="margin-bottom: 6px;">${ROLE_LABELS[r.user.role]} · 👆 tap to verify customers</div>
           <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; font-size: 10px; padding-top: 6px; border-top: 1px solid var(--border-2);">
             <div style="text-align: center;">
-              <div style="font-weight: 800; color: var(--primary); font-size: 13px;">${r.payslip}</div>
-              <div style="color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">Payslip</div>
+             <div style="font-weight: 800; color: var(--primary); font-size: 13px;">${r.payslip}</div>
+              <div class="stat-label" style="text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">Payslip</div>
             </div>
             <div style="text-align: center;">
               <div style="font-weight: 800; color: var(--primary); font-size: 13px;">${r.kpi}</div>
-              <div style="color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">KPI</div>
+              <div class="stat-label" style="text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">KPI</div>
             </div>
             <div style="text-align: center;">
               <div style="font-weight: 800; color: var(--primary); font-size: 13px;">${fmtK(r.kfi)}</div>
-              <div style="color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">KFI (RM)</div>
+              <div class="stat-label" style="text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">KFI (RM)</div>
             </div>
             <div style="text-align: center;">
               <div style="font-weight: 800; color: var(--accent-deep); font-size: 13px;">${fmtK(r.com)}</div>
-              <div style="color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">Com (RM)</div>
+              <div class="stat-label" style="text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">Com (RM)</div>
             </div>
             <div style="text-align: center;">
               <div style="font-weight: 800; color: ${r.specialCom > 0 ? '#C2620C' : 'var(--ink-3)'}; font-size: 13px;">${r.specialCom > 0 ? fmtK(r.specialCom) : '—'}</div>
-              <div style="color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">Special</div>
+              <div class="stat-label" style="text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">Special</div>
             </div>
           </div>
         </div>
