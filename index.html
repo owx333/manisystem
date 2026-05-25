@@ -973,7 +973,7 @@ const Permissions = {
   isHQ: u => u?.role === 'hq',
   
   // Can see all branches data (HQ only)
-  canViewAllBranches: u => u?.role === 'hq',
+  canViewAllBranches: u => ['hq', 'admin'].includes(u?.role),
 
   // Can DELETE customer data, settings, users — Boss only
   canDelete: u => ['admin', 'hq'].includes(u?.role),
@@ -2222,7 +2222,7 @@ const Logic = {
   // Notification counts (computed live, no persistent state)
   notificationCount(user) {
     let count = 0;
-    if (Permissions.isAdminLevel(user) && user.role !== 'hq') {
+    if (Permissions.isAdminLevel(user) && !['hq', 'admin'].includes(user.role)) {
       // Admin/Manager: count of new payslip in last 24h, pending cases needing review
       const recentCutoff = Date.now() - 24 * 60 * 60 * 1000;
       let allCases = DB.cases();
