@@ -4297,23 +4297,23 @@ ${isAdminLike ? `
           <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; font-size: 10px; padding-top: 6px; border-top: 1px solid var(--border-2);">
             <div style="text-align: center;">
               <div style="font-weight: 800; color: var(--primary); font-size: 13px;">${r.payslip}</div>
-              <div style="color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">Payslip</div>
+              <div style="color: ${i===0?'rgba(255,255,255,0.7)':'var(--ink-3)'}; text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">Payslip</div>
             </div>
             <div style="text-align: center;">
               <div style="font-weight: 800; color: var(--primary); font-size: 13px;">${r.kpi}</div>
-              <div style="color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">KPI</div>
+              <div style="color: ${i===0?'rgba(255,255,255,0.7)':'var(--ink-3)'}; text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">Payslip</div>
             </div>
             <div style="text-align: center;">
               <div style="font-weight: 800; color: var(--primary); font-size: 13px;">${fmtK(r.kfi)}</div>
-              <div style="color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">KFI (RM)</div>
+              <div style="color: ${i===0?'rgba(255,255,255,0.7)':'var(--ink-3)'}; text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">Payslip</div>
             </div>
             <div style="text-align: center;">
               <div style="font-weight: 800; color: var(--accent-deep); font-size: 13px;">${fmtK(r.com)}</div>
-              <div style="color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">Com (RM)</div>
+              <div style="color: ${i===0?'rgba(255,255,255,0.7)':'var(--ink-3)'}; text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">Payslip</div>
             </div>
             <div style="text-align: center;">
               <div style="font-weight: 800; color: ${r.specialCom > 0 ? '#C2620C' : 'var(--ink-3)'}; font-size: 13px;">${r.specialCom > 0 ? fmtK(r.specialCom) : '—'}</div>
-              <div style="color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">Special</div>
+              <div style="color: ${i===0?'rgba(255,255,255,0.7)':'var(--ink-3)'}; text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; font-weight: 700;">Payslip</div>
             </div>
           </div>
         </div>
