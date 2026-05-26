@@ -1592,9 +1592,16 @@ const DB = {
   // Send notification to all active users with specified roles (e.g. Boss/Manager/Admin/HQ)
   // Returns { count, recipientNames, failed }
   async broadcastNotification(targetRoles, notifData) {
-    const recipients = this.users().filter(u => 
-      targetRoles.includes(u.role) && !u.inactive
-    );
+let allUsers = this.users();
+if (window.Cloud?.connected) {
+  try {
+    const cloudUsers = await window.Cloud.getAll('users');
+    if (cloudUsers && cloudUsers.length > 0) allUsers = cloudUsers;
+  } catch(e) { /* fallback to local */ }
+}
+const recipients = allUsers.filter(u =>
+  targetRoles.includes(u.role) && !u.inactive
+);
     
     console.log(`📢 Broadcasting "${notifData.title || notifData.type}" to ${recipients.length} users:`, 
       recipients.map(u => `${u.name}(${u.role})`).join(', '));
