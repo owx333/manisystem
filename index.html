@@ -1279,9 +1279,20 @@ const DB = {
   branches() { return this.get(this.K.branches, SEED_BRANCHES); },
   branch(id) { return this.branches().find(b => b.id === id); },
   saveBranches(list) { 
+    // Capture old list BEFORE updating localStorage (to detect deletions)
+    const oldList = this.branches();
     this.set(this.K.branches, list);
     if (window.Cloud?.connected) {
+      // Sync all current branches (add + update)
       list.forEach(b => window.Cloud.setDoc('branches', b.id, b));
+      // Delete from Firestore: branches that were in oldList but NOT in new list
+      const newIds = new Set(list.map(b => b.id));
+      oldList.forEach(o => {
+        if (!newIds.has(o.id)) {
+          window.Cloud.deleteDoc('branches', o.id);
+          console.log(`🗑️ Branch "${o.id}" deleted from Firestore`);
+        }
+      });
     }
   },
   updateUser(id, updates) {
@@ -7686,12 +7697,12 @@ async function bootstrap() {
         DB.set(DB.K.announcements, items);
         debouncedRender();
       });
-window.Cloud.subscribe('koperasi', items => {
-  if (window._koperasiWritePending) return;
-  DB.set(DB.K.koperasi, items);
-  refreshPackages();
-  debouncedRender();
-});
+      window.Cloud.subscribe('branches', items => {
+        if (items && items.length > 0) {
+          DB.set(DB.K.branches, items);
+          debouncedRender();
+        }
+      });
       // Subscribe to notifications for current user
       window.Cloud.subscribe('notifications', items => {
         const user = Auth.current();
