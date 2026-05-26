@@ -1545,22 +1545,31 @@ const DB = {
     if (window.Cloud?.connected) window.Cloud.setDoc('koperasi', finalId, pkg);
     refreshPackages();
     return pkg;
-  },
-  updateKoperasi(id, updates) {
+updateKoperasi(id, updates) {
     const list = this.koperasi();
     const idx = list.findIndex(p => p.id === id);
     if (idx === -1) return null;
     list[idx] = { ...list[idx], ...updates };
     list[idx].isHighPayout = (list[idx].payout || 0) >= 65;
     this.set(this.K.koperasi, list);
-    if (window.Cloud?.connected) window.Cloud.setDoc('koperasi', id, list[idx]);
+    if (window.Cloud?.connected) {
+      window._koperasiWritePending = true;
+      window.Cloud.setDoc('koperasi', id, list[idx]).then(() => {
+        window._koperasiWritePending = false;
+      });
+    }
     refreshPackages();
     return list[idx];
   },
   deleteKoperasi(id) {
     const list = this.koperasi().filter(p => p.id !== id);
     this.set(this.K.koperasi, list);
-    if (window.Cloud?.connected) window.Cloud.deleteDoc('koperasi', id);
+    if (window.Cloud?.connected) {
+      window._koperasiWritePending = true;
+      window.Cloud.deleteDoc('koperasi', id).then(() => {
+        window._koperasiWritePending = false;
+      });
+    }
     refreshPackages();
   },
   
@@ -7676,12 +7685,12 @@ async function bootstrap() {
         DB.set(DB.K.announcements, items);
         debouncedRender();
       });
-      window.Cloud.subscribe('branches', items => {
-        if (items.length > 0) {
-          DB.set(DB.K.branches, items);
-          debouncedRender();
-        }
-      });
+window.Cloud.subscribe('koperasi', items => {
+  if (window._koperasiWritePending) return;
+  DB.set(DB.K.koperasi, items);
+  refreshPackages();
+  debouncedRender();
+});
       // Subscribe to notifications for current user
       window.Cloud.subscribe('notifications', items => {
         const user = Auth.current();
