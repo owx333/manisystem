@@ -1590,15 +1590,30 @@ const DB = {
   
   // ============ BROADCAST NOTIFICATION TO MULTIPLE ROLES ============
   // Send notification to all active users with specified roles (e.g. Boss/Manager/Admin/HQ)
-  // Returns count of users notified
-  broadcastNotification(targetRoles, notifData) {
+  // Returns { count, recipientNames, failed }
+  async broadcastNotification(targetRoles, notifData) {
     const recipients = this.users().filter(u => 
       targetRoles.includes(u.role) && !u.inactive
     );
-    recipients.forEach(u => {
-      this.addNotification(u.id, notifData);
-    });
-    return recipients.length;
+    
+    console.log(`📢 Broadcasting "${notifData.title || notifData.type}" to ${recipients.length} users:`, 
+      recipients.map(u => `${u.name}(${u.role})`).join(', '));
+    
+    const results = await Promise.all(
+      recipients.map(async u => {
+        const ok = await this.addNotification(u.id, notifData);
+        return { user: u, ok };
+      })
+    );
+    
+    const successful = results.filter(r => r.ok);
+    const failed = results.filter(r => !r.ok);
+    
+    return {
+      count: successful.length,
+      recipientNames: successful.map(r => r.user.name),
+      failed: failed.map(r => r.user.name)
+    };
   },
   
   // Settings (single doc with all admin-configurable values)
@@ -1646,15 +1661,62 @@ const DB = {
     const all = this.get(this.K.notifications, {});
     return (all[userId] || []).sort((a,b) => b.ts - a.ts);
   },
-  addNotification(userId, notif) {
-    const all = this.get(this.K.notifications, {});
-    if (!all[userId]) all[userId] = [];
-    all[userId].unshift({ id: 'n' + Date.now() + Math.random().toString(36).slice(2,6), ts: Date.now(), read: false, ...notif });
-    // Keep last 50 per user
-    all[userId] = all[userId].slice(0, 50);
-    this.set(this.K.notifications, all);
-    if (window.Cloud?.connected) window.Cloud.setDoc('notifications', userId, { userId, items: all[userId] });
+  
+  // Add a notification to a user's inbox
+  // - If userId === current user: writes locally, syncs to Firestore
+  // - If userId !== current user (cross-user broadcast): fetches target's existing 
+  //   Firestore doc FIRST to avoid overwriting their other notifications
+  async addNotification(userId, notif) {
+    const newItem = { 
+      id: 'n' + Date.now() + Math.random().toString(36).slice(2,6), 
+      ts: Date.now(), 
+      read: false, 
+      ...notif 
+    };
+    
+    const currentUser = Auth.current();
+    const isSelf = currentUser?.id === userId;
+    
+    // Always update local storage if it's for current user
+    if (isSelf) {
+      const all = this.get(this.K.notifications, {});
+      if (!all[userId]) all[userId] = [];
+      all[userId].unshift(newItem);
+      all[userId] = all[userId].slice(0, 50);
+      this.set(this.K.notifications, all);
+    }
+    
+    // Sync to Firestore
+    if (window.Cloud?.connected) {
+      try {
+        if (isSelf) {
+          // Self: write current localStorage (already up-to-date)
+          const all = this.get(this.K.notifications, {});
+          await window.Cloud.setDoc('notifications', userId, { 
+            userId, 
+            items: all[userId] || [] 
+          });
+          console.log(`🔔 Self-notif written for ${userId}`);
+        } else {
+          // Cross-user: MUST fetch existing first to avoid overwriting their data!
+          const existingDoc = await window.Cloud.getDoc('notifications', userId);
+          const existingItems = (existingDoc?.items) || [];
+          const updatedItems = [newItem, ...existingItems].slice(0, 50);
+          await window.Cloud.setDoc('notifications', userId, { 
+            userId, 
+            items: updatedItems 
+          });
+          console.log(`🔔 Cross-user notif sent to ${userId} (had ${existingItems.length} previous, now ${updatedItems.length})`);
+        }
+        return true;
+      } catch (e) {
+        console.error('addNotification Firestore error for', userId, e);
+        return false;
+      }
+    }
+    return true;
   },
+  
   markNotificationsRead(userId) {
     const all = this.get(this.K.notifications, {});
     if (all[userId]) all[userId] = all[userId].map(n => ({ ...n, read: true }));
@@ -3261,7 +3323,7 @@ ${isAdminLike ? `
   },
   
   // Boss-only: delete a case permanently from local + Firestore
-  deleteCase(caseId) {
+  async deleteCase(caseId) {
     const c = DB.caseById(caseId);
     if (!c) return;
     const user = Auth.current();
@@ -3277,6 +3339,9 @@ ${isAdminLike ? `
     const notifData = {
       type: 'customer_deleted',
       severity: 'high',
+      icon: '🗑️',
+      title: 'Customer Deleted',
+      message: `${user.name} (${ROLE_LABELS[user.role] || user.role}) deleted customer "${c.customer_name}"`,
       actor_id: user.id,
       actor_name: user.name,
       actor_role: user.role,
@@ -3306,22 +3371,31 @@ ${isAdminLike ? `
       });
     }
     
-    // Broadcast notification to Boss + Manager + Admin (Kerani) + HQ
-    const notifiedCount = DB.broadcastNotification(
-      ['admin', 'manager', 'kerani', 'hq'],
-      {
-        type: 'customer_deleted',
-        severity: 'high',
-        icon: '🗑️',
-        title: 'Customer Deleted',
-        message: `${user.name} (${ROLE_LABELS[user.role] || user.role}) deleted customer "${c.customer_name}"`,
-        ...notifData
-      }
-    );
-    console.log(`🔔 Customer deletion notification sent to ${notifiedCount} users (Boss/Manager/Admin/HQ)`);
-    
     hideModal();
-    toast(`Customer deleted ${window.Cloud?.connected ? '· synced ☁' : ''} · 🔔 ${notifiedCount} staff notified`);
+    toast('Customer deleted · sending notifications...');
+    this.render();
+    
+    // Broadcast notification (async) - notify Boss + Manager + Admin (Kerani) + HQ
+    try {
+      const result = await DB.broadcastNotification(
+        ['admin', 'manager', 'kerani', 'hq'],
+        notifData
+      );
+      
+      console.log(`🔔 Notification result:`, result);
+      
+      if (result.count === 0) {
+        toast('⚠ Customer deleted but NO recipients found · Add a Manager/Admin/Boss first!');
+      } else if (result.failed.length > 0) {
+        toast(`Customer deleted · 🔔 ${result.count} notified (${result.recipientNames.join(', ')}) · ⚠ ${result.failed.length} failed: ${result.failed.join(', ')}`);
+      } else {
+        toast(`✓ Customer deleted · 🔔 Notified: ${result.recipientNames.join(', ')}`);
+      }
+    } catch (e) {
+      console.error('Broadcast notification failed:', e);
+      toast('⚠ Customer deleted but notifications may have failed · check console');
+    }
+    
     this.render();
   },
   
