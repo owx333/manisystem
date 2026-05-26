@@ -7591,11 +7591,12 @@ if (type === 'disbursed') {
     d[key].push(isNumeric ? 10000 : '');
     this.render();
   },
-  removeListItem(key, idx) {
-    const d = this.state.settingsDraft;
-    d[key].splice(idx, 1);
-    this.render();
-  },
+removeListItem(key, idx) {
+  this.state.settingsDirty = true;
+  const d = this.state.settingsDraft;
+  d[key].splice(idx, 1);
+  this.render();
+},
   
   // ============ Tenor Editor ============
   renderTenorEditor(tenors) {
