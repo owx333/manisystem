@@ -1545,7 +1545,8 @@ const DB = {
     if (window.Cloud?.connected) window.Cloud.setDoc('koperasi', finalId, pkg);
     refreshPackages();
     return pkg;
-updateKoperasi(id, updates) {
+  },
+  updateKoperasi(id, updates) {
     const list = this.koperasi();
     const idx = list.findIndex(p => p.id === id);
     if (idx === -1) return null;
