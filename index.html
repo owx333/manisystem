@@ -42,7 +42,7 @@ window.__firebaseStatus = { stage: 'loading', error: null };
     // ========== SHARED AUTH (Layer 2 Security) ==========
     // Auto-signin to a shared service account so Firestore rules can require auth
     // 14 staff不需要做任何事 — completely invisible. App login still uses Name+Password.
-    // Without these credentials, attackers (even with API key) cannot access Firestore.
+    // Without these passwords, attackers (even with API key) cannot access Firestore.
     const SHARED_AUTH = {
       email: 'awara-service@awara.local',
       password: 'AwaraSys_2026_Kx9pL3mR_Sec'  // ⚠ if you change this in Firebase Console, update here too!
@@ -1192,7 +1192,7 @@ function generateSeedCases() {
         date_approved: dateApproved,
         date_disbursed: dateDisbursed,
         date_rejected: dateRejected,
-        // Submit credentials
+        // Submit passwords
         amm_password: ammPw,
         hrmis_password: hrmisPw,
         // Status
@@ -3022,8 +3022,8 @@ if (isLeader && (this.state.tabState.cases || 'mine') === 'team') {
 ${isAdminLike ? `
             <div style="margin-top: 10px; padding: 10px 12px; background: var(--cream-2); border-radius: 8px; font-size: 11px; color: var(--ink-2); border: 1px dashed var(--border);">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <div style="font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3);">Submit Credentials</div>
-                <button onclick="App.openEditCredentials('${c.id}')" style="background: var(--primary); color: var(--accent); border: none; border-radius: 6px; padding: 3px 10px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit;">✏️ Edit</button>
+                <div style="font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3);">Submit passwords</div>
+                <button onclick="App.openEditpasswords('${c.id}')" style="background: var(--primary); color: var(--accent); border: none; border-radius: 6px; padding: 3px 10px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit;">✏️ Edit</button>
               </div>
               <div>ANM: <strong>${c.amm_password || '—'}</strong></div>
               <div>HRMIS: <strong>${c.hrmis_password || '—'}</strong></div>
@@ -3145,26 +3145,26 @@ ${isAdminLike ? `
     toast('Admin detail disimpan ✓');
     this.viewCase(caseId);
   },
-  openEditCredentials(caseId) {
+  openEditpasswords(caseId) {
     const c = DB.caseById(caseId);
     if (!c) return;
     showModal(`
-      <div class="modal-title">✏️ Edit Credentials</div>
+      <div class="modal-title">✏️ Edit passwords</div>
       <div class="modal-sub">${c.customer_name} · ${c.ic || '—'}</div>
       <div class="form-group">
         <label>ANM</label>
-        <input type="text" id="ec-amm" placeholder="ANM credential..." value="${c.amm_password || ''}">
+        <input type="text" id="ec-amm" placeholder="ANM password..." value="${c.amm_password || ''}">
       </div>
       <div class="form-group">
         <label>HRMIS</label>
-        <input type="text" id="ec-hrmis" placeholder="HRMIS credential..." value="${c.hrmis_password || ''}">
+        <input type="text" id="ec-hrmis" placeholder="HRMIS password..." value="${c.hrmis_password || ''}">
       </div>
-      <button class="submit-btn" onclick="App.saveEditCredentials('${caseId}')">💾 Simpan</button>
+      <button class="submit-btn" onclick="App.saveEditpasswords('${caseId}')">💾 Simpan</button>
       <button class="btn-secondary" onclick="App.viewCase('${caseId}')">Back</button>
     `);
   },
 
-  saveEditCredentials(caseId) {
+  saveEditpasswords(caseId) {
     const updates = {
       amm_password:   document.getElementById('ec-amm').value.trim() || null,
       hrmis_password: document.getElementById('ec-hrmis').value.trim() || null,
@@ -3573,7 +3573,7 @@ ${isAdminLike ? `
     this.render();
   },
   
-  // Submit form: requires AMM/HRMIS credentials
+  // Submit form: requires AMM/HRMIS passwords
   openSubmitForm(caseId) {
     const c = DB.caseById(caseId);
     const today = new Date().toISOString().slice(0,10);
@@ -3582,17 +3582,17 @@ ${isAdminLike ? `
       <div class="modal-sub">${c.customer_name} · ${pkgName(c.package_id)} · ${fmtRM(c.loan_amount)}</div>
       
       <div class="info-banner" style="margin: 0 0 14px;">
-        <strong>Rekod AMM & HRMIS credentials</strong> yang digunakan untuk submit case ini. Untuk audit trail.
+        <strong>Rekod AMM & HRMIS passwords</strong> yang digunakan untuk submit case ini. Untuk audit trail.
       </div>
       
       <div class="form-group">
         <label>AMM Password / Account *</label>
-        <input type="text" id="sb-amm" placeholder="AMM credential" value="${c.amm_password || ''}">
+        <input type="text" id="sb-amm" placeholder="AMM password" value="${c.amm_password || ''}">
       </div>
       
       <div class="form-group">
         <label>HRMIS Password / Account *</label>
-        <input type="text" id="sb-hrmis" placeholder="HRMIS credential" value="${c.hrmis_password || ''}">
+        <input type="text" id="sb-hrmis" placeholder="HRMIS password" value="${c.hrmis_password || ''}">
       </div>
       
       <div class="form-group">
