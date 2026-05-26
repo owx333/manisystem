@@ -1590,40 +1590,36 @@ const DB = {
       const allUsers = this.users();
       const caseBranch = updatedCase.branch_id;
 
-      // Notification rules (per role of editor):
-      // cs       → team leader (leader_id), manager (same branch)
-      // solo     → team leader (same branch), manager (same branch), admin/kerani (same branch)
-      // leader   → manager (same branch), admin/kerani (same branch)
-      // kerani   → manager (same branch), team leader (same branch), solo (same branch), hq
-      // manager  → admin/kerani (same branch), team leader (same branch), solo (same branch), hq
-      // hq       → admin/kerani (same branch), boss/admin (all), manager (same branch)
-      // admin    → admin/kerani (same branch), hq (all), manager (same branch)
+// Notification rules (per role of editor):
+      // cs     → case owner leader only (leader_id) + manager
+      // solo   → admin + manager only (NOT other leaders)
+      // leader → admin + manager only (NOT other leaders)
+      // kerani → manager, case owner (leader_id or solo), hq
+      // manager→ admin, case owner (leader_id or solo), hq
+      // hq     → admin, manager
+      // admin  → hq, manager
+      const caseOwner = updatedCase.leader_id; // whoever owns the case (leader or solo)
       if (editorRole === 'cs') {
-        notify(updatedCase.leader_id);
+        notify(caseOwner);
         allUsers.filter(u => u.role === 'manager' && u.branch_id === caseBranch).forEach(u => notify(u.id));
       } else if (editorRole === 'solo') {
-        allUsers.filter(u => u.role === 'leader' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+        allUsers.filter(u => u.role === 'admin').forEach(u => notify(u.id));
         allUsers.filter(u => u.role === 'manager' && u.branch_id === caseBranch).forEach(u => notify(u.id));
-        allUsers.filter(u => u.role === 'kerani' && u.branch_id === caseBranch).forEach(u => notify(u.id));
       } else if (editorRole === 'leader') {
+        allUsers.filter(u => u.role === 'admin').forEach(u => notify(u.id));
         allUsers.filter(u => u.role === 'manager' && u.branch_id === caseBranch).forEach(u => notify(u.id));
-        allUsers.filter(u => u.role === 'kerani' && u.branch_id === caseBranch).forEach(u => notify(u.id));
       } else if (editorRole === 'kerani') {
         allUsers.filter(u => u.role === 'manager' && u.branch_id === caseBranch).forEach(u => notify(u.id));
-        allUsers.filter(u => u.role === 'leader' && u.branch_id === caseBranch).forEach(u => notify(u.id));
-        allUsers.filter(u => u.role === 'solo' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+        notify(caseOwner);
         allUsers.filter(u => u.role === 'hq').forEach(u => notify(u.id));
       } else if (editorRole === 'manager') {
-        allUsers.filter(u => u.role === 'kerani' && u.branch_id === caseBranch).forEach(u => notify(u.id));
-        allUsers.filter(u => u.role === 'leader' && u.branch_id === caseBranch).forEach(u => notify(u.id));
-        allUsers.filter(u => u.role === 'solo' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+        allUsers.filter(u => u.role === 'admin').forEach(u => notify(u.id));
+        notify(caseOwner);
         allUsers.filter(u => u.role === 'hq').forEach(u => notify(u.id));
       } else if (editorRole === 'hq') {
-        allUsers.filter(u => u.role === 'kerani' && u.branch_id === caseBranch).forEach(u => notify(u.id));
         allUsers.filter(u => u.role === 'admin').forEach(u => notify(u.id));
         allUsers.filter(u => u.role === 'manager' && u.branch_id === caseBranch).forEach(u => notify(u.id));
       } else if (editorRole === 'admin') {
-        allUsers.filter(u => u.role === 'kerani' && u.branch_id === caseBranch).forEach(u => notify(u.id));
         allUsers.filter(u => u.role === 'hq').forEach(u => notify(u.id));
         allUsers.filter(u => u.role === 'manager' && u.branch_id === caseBranch).forEach(u => notify(u.id));
       }
