@@ -1086,7 +1086,7 @@ function generateSeedCases() {
     { cs: 'hani', leader: 'hani', count: 17, contacted: 9, proposed: 4, submitted: 2, approved: 1, disbursed: 1, pending: 1 },
   ];
   
-  // Sample AMM/HRMIS credentials (text labels for tracking which login was used)
+  // Sample AMM/HRMIS password(text labels for tracking which login was used)
   const ammCreds = ['AMM-FAIZAH-01', 'AMM-AYNA-02', 'AMM-IZAH-03', 'AMM-ELLY-04', 'AMM-ATIRAH-S', 'AMM-HANI-S'];
   const hrmisCreds = ['HRMIS-MAIN', 'HRMIS-SUB-A', 'HRMIS-SUB-B', 'HRMIS-SUB-C'];
   
@@ -3060,7 +3060,7 @@ ${isAdminLike ? `
       hrmis_password: document.getElementById('ec-hrmis').value.trim() || null,
     };
     DB.updateCase(caseId, updates);
-    toast('Credentials dikemaskini ✓');
+    toast('passworddikemaskini ✓');
     this.viewCase(caseId);
   },
   
