@@ -84,7 +84,7 @@ window.__firebaseStatus = { stage: 'loading', error: null };
     window.Cloud = {
       enabled: true,
       connected: false,
-      collections: ['users', 'cases', 'activities', 'customer_notes', 'seen', 'koperasi', 'announcements', 'settings'],
+      collections: ['users', 'cases', 'activities', 'customer_notes', 'seen', 'koperasi', 'announcements', 'settings', 'notifications', 'branches', 'login_attempts'],
       listeners: {},
       
       // Expose for bootstrap to call before Firestore reads
@@ -1009,7 +1009,10 @@ const Permissions = {
   canSeeAllCases: u => ['admin', 'manager', 'kerani', 'hq'].includes(u?.role),
   
   // Kerani-specific: limited to customer board only
-  isKeraniOnly: u => u?.role === 'kerani'
+  isKeraniOnly: u => u?.role === 'kerani',
+  
+  // Can see system notifications (alerts) — Boss + Manager + Admin (kerani) + HQ
+  canSeeNotifications: u => ['admin', 'manager', 'kerani', 'hq'].includes(u?.role)
 };
 
 // ==================== USERS (14 staff + 1 admin) ====================
@@ -1583,6 +1586,19 @@ const DB = {
     const list = this.announcements().filter(a => a.id !== id);
     this.set(this.K.announcements, list);
     if (window.Cloud?.connected) window.Cloud.deleteDoc('announcements', id);
+  },
+  
+  // ============ BROADCAST NOTIFICATION TO MULTIPLE ROLES ============
+  // Send notification to all active users with specified roles (e.g. Boss/Manager/Admin/HQ)
+  // Returns count of users notified
+  broadcastNotification(targetRoles, notifData) {
+    const recipients = this.users().filter(u => 
+      targetRoles.includes(u.role) && !u.inactive
+    );
+    recipients.forEach(u => {
+      this.addNotification(u.id, notifData);
+    });
+    return recipients.length;
   },
   
   // Settings (single doc with all admin-configurable values)
@@ -3251,8 +3267,33 @@ ${isAdminLike ? `
     const user = Auth.current();
     if (!Permissions.canDelete(user)) { toast('No permission to delete'); return; }
     
-    const confirmText = `DELETE customer "${c.customer_name}" permanently?\n\nThis cannot be undone.`;
+    const confirmText = `DELETE customer "${c.customer_name}" permanently?\n\nThis cannot be undone.\n\n⚠ Notification akan dihantar kepada Boss/Manager/Admin/HQ.`;
     if (!confirm(confirmText)) return;
+    
+    // Capture customer details for notification BEFORE deletion (we lose access after)
+    const sourceCs = DB.user(c.source_cs_id);
+    const leader = DB.user(c.leader_id);
+    
+    const notifData = {
+      type: 'customer_deleted',
+      severity: 'high',
+      actor_id: user.id,
+      actor_name: user.name,
+      actor_role: user.role,
+      case_id: caseId,
+      customer_name: c.customer_name,
+      customer_ic: c.ic || '',
+      customer_phone: c.phone || '',
+      case_status: c.status || 'unknown',
+      package_id: c.package_id || '',
+      loan_amount: c.loan_amount || 0,
+      source_cs_id: c.source_cs_id || '',
+      source_cs_name: sourceCs?.name || c.source_cs_id || 'Unknown',
+      leader_id: c.leader_id || '',
+      leader_name: leader?.name || c.leader_id || 'Unknown',
+      branch_id: c.branch_id || '',
+      deleted_at: Date.now()
+    };
     
     // Remove from cases array
     const cases = DB.cases().filter(x => x.id !== caseId);
@@ -3265,8 +3306,22 @@ ${isAdminLike ? `
       });
     }
     
+    // Broadcast notification to Boss + Manager + Admin (Kerani) + HQ
+    const notifiedCount = DB.broadcastNotification(
+      ['admin', 'manager', 'kerani', 'hq'],
+      {
+        type: 'customer_deleted',
+        severity: 'high',
+        icon: '🗑️',
+        title: 'Customer Deleted',
+        message: `${user.name} (${ROLE_LABELS[user.role] || user.role}) deleted customer "${c.customer_name}"`,
+        ...notifData
+      }
+    );
+    console.log(`🔔 Customer deletion notification sent to ${notifiedCount} users (Boss/Manager/Admin/HQ)`);
+    
     hideModal();
-    toast('Customer deleted ' + (window.Cloud?.connected ? '· synced ☁' : '· local only'));
+    toast(`Customer deleted ${window.Cloud?.connected ? '· synced ☁' : ''} · 🔔 ${notifiedCount} staff notified`);
     this.render();
   },
   
@@ -4534,18 +4589,67 @@ ${isAdminLike ? `
     if (!user) return;
     const notifs = DB.notifications(user.id);
     DB.markNotificationsRead(user.id);
-    showModal(`
-      <div class="modal-title">🔔 Notifikasi</div>
-      ${notifs.length === 0 ? `<div style="text-align:center;padding:32px 0;color:var(--ink-3);font-size:14px;">Tiada notifikasi</div>` :
-        notifs.map(n => `
-          <div style="padding:12px 0;border-bottom:1px solid var(--border-2);">
-            <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:3px;">${n.title || 'Notifikasi'}</div>
-            <div style="font-size:12px;color:var(--ink-3);">${n.body || ''}</div>
-            <div style="font-size:10px;color:var(--ink-3);margin-top:4px;">${new Date(n.ts).toLocaleString('en-MY')}</div>
+    
+    const renderOneNotif = (n) => {
+      const date = new Date(n.ts).toLocaleString('en-MY', { 
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: true 
+      });
+      const isHighSeverity = n.severity === 'high';
+      const bg = isHighSeverity ? 'rgba(229, 62, 62, 0.05)' : 'var(--cream-2)';
+      const border = isHighSeverity ? 'rgba(229, 62, 62, 0.2)' : 'var(--border-2)';
+      
+      // Customer deletion - rich display
+      if (n.type === 'customer_deleted') {
+        return `
+          <div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:12px;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">
+              <div style="font-size:13px;font-weight:800;color:#C53030;">🗑️ Customer Deleted</div>
+              <div style="font-size:9px;color:var(--ink-3);white-space:nowrap;">${date}</div>
+            </div>
+            <div style="font-size:12px;color:var(--ink);margin-bottom:6px;line-height:1.4;">
+              <strong>${n.actor_name}</strong> 
+              <span style="background:var(--cream-3);padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;text-transform:uppercase;color:var(--ink-2);">${ROLE_LABELS[n.actor_role] || n.actor_role}</span>
+              deleted customer:
+            </div>
+            <div style="background:var(--cream);border-radius:8px;padding:10px;font-size:11px;line-height:1.6;">
+              <div><strong>Name:</strong> ${n.customer_name || '—'}</div>
+              ${n.customer_ic ? `<div><strong>IC:</strong> ${n.customer_ic}</div>` : ''}
+              ${n.customer_phone ? `<div><strong>Phone:</strong> ${n.customer_phone}</div>` : ''}
+              ${n.case_status ? `<div><strong>Status:</strong> <span style="text-transform:capitalize;">${n.case_status.replace('_', ' ')}</span></div>` : ''}
+              ${n.package_id ? `<div><strong>Package:</strong> ${n.package_id.toUpperCase()}</div>` : ''}
+              ${n.loan_amount ? `<div><strong>Loan:</strong> RM ${(n.loan_amount).toLocaleString()}</div>` : ''}
+              ${n.source_cs_name ? `<div><strong>Source CS:</strong> ${n.source_cs_name}</div>` : ''}
+              ${n.leader_name ? `<div><strong>Leader:</strong> ${n.leader_name}</div>` : ''}
+            </div>
           </div>
-        `).join('')
+        `;
       }
-      <button class="btn-secondary" onclick="hideModal(); App.render();" style="margin-top:12px;">Tutup</button>
+      
+      // Generic notification
+      return `
+        <div style="padding:12px;background:${bg};border:1px solid ${border};border-radius:10px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+            <div style="font-size:13px;font-weight:700;color:var(--ink);">${n.icon || '🔔'} ${n.title || 'Notifikasi'}</div>
+            <div style="font-size:9px;color:var(--ink-3);white-space:nowrap;">${date}</div>
+          </div>
+          ${n.message ? `<div style="font-size:12px;color:var(--ink-2);margin-top:4px;line-height:1.4;">${n.message}</div>` : ''}
+          ${n.body ? `<div style="font-size:12px;color:var(--ink-3);margin-top:4px;">${n.body}</div>` : ''}
+        </div>
+      `;
+    };
+    
+    showModal(`
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div class="modal-title" style="margin:0;">🔔 Notifikasi ${notifs.length > 0 ? `<span style="font-size:12px;color:var(--ink-3);font-weight:500;">(${notifs.length})</span>` : ''}</div>
+      </div>
+      <div style="max-height:60vh;overflow-y:auto;">
+      ${notifs.length === 0 
+        ? `<div style="text-align:center;padding:32px 0;color:var(--ink-3);font-size:14px;">📭 Tiada notifikasi baru</div>` 
+        : notifs.map(renderOneNotif).join('')
+      }
+      </div>
+      <button class="btn-secondary" onclick="hideModal(); App.render();" style="margin-top:12px;width:100%;">Tutup</button>
     `);
   },
 
@@ -7374,14 +7478,15 @@ async function bootstrap() {
         console.log("Loading from Firestore...", cloudUsers.length, "users");
         DB.set(DB.K.users, cloudUsers);
         
-        const [cloudCases, cloudActs, cloudNotes, cloudKoperasi, cloudAnns, cloudSettings, cloudBranches] = await Promise.all([
+        const [cloudCases, cloudActs, cloudNotes, cloudKoperasi, cloudAnns, cloudSettings, cloudBranches, cloudNotifs] = await Promise.all([
           window.Cloud.getAll('cases'),
           window.Cloud.getAll('activities'),
           window.Cloud.getAll('customer_notes'),
           window.Cloud.getAll('koperasi'),
           window.Cloud.getAll('announcements'),
           window.Cloud.getDoc('settings', 'main'),
-          window.Cloud.getAll('branches')
+          window.Cloud.getAll('branches'),
+          window.Cloud.getAll('notifications')
         ]);
         
         DB.set(DB.K.cases, cloudCases);
@@ -7393,6 +7498,15 @@ async function bootstrap() {
         
         DB.set(DB.K.koperasi, cloudKoperasi.length > 0 ? cloudKoperasi : DEFAULT_PACKAGES);
         DB.set(DB.K.announcements, cloudAnns);
+        
+        // Notifications: each doc has shape { userId, items: [...] } - flatten into { userId: items }
+        const notifMap = {};
+        (cloudNotifs || []).forEach(doc => {
+          if (doc.userId && Array.isArray(doc.items)) {
+            notifMap[doc.userId] = doc.items;
+          }
+        });
+        DB.set(DB.K.notifications, notifMap);
         
         // Settings: use cloud or default
         if (cloudSettings) {
