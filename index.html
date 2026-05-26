@@ -7676,6 +7676,11 @@ async function bootstrap() {
         items.forEach(n => { if (n.ic) obj[n.ic] = n.note; });
         DB.set(DB.K.customer_notes, obj);
       });
+      window.Cloud.subscribe('koperasi', items => {
+        DB.set(DB.K.koperasi, items);
+        refreshPackages();
+        debouncedRender();
+      });
       window.Cloud.subscribe('announcements', items => {
         DB.set(DB.K.announcements, items);
         debouncedRender();
