@@ -2231,11 +2231,9 @@ const Logic = {
         c.status === 'new' && new Date(c.date_payslip).getTime() > recentCutoff
       ).length;
       count = newCases;
-    } else if (this.isLeaderRole(user)) {
-      // Leader: count of "new" payslips for them + stale cases
-      const newCount = this.allCases({ leaderId: user.id }).filter(c => c.status === 'new').length;
-      const staleCount = this.staleCases(user.id, 3).length;
-      count = newCount + staleCount;
+} else if (this.isLeaderRole(user)) {
+  // Leader: count of "new" payslips only
+  count = this.allCases({ leaderId: user.id }).filter(c => c.status === 'new').length;
     } else if (user.role === 'cs') {
       // CS: count of disbursed cases this month not yet "seen"
       const cases = this.allCases({ csId: user.id });
