@@ -2265,7 +2265,6 @@ const Logic = {
     // KPI count = cases that were submitted AND still alive (NOT rejected) - item 4 requirement
     // Rejected this month doesn't count toward submit/KPI commission
     const submitted = submitCases.filter(c => !c.is_duplicate && c.status !== 'rejected').length;
-    const submittedRaw = submitCases.filter(c => !c.is_duplicate).length;  // including rejected (for display only)
     const disbursed = disburseCases.filter(c => !c.is_duplicate).length;
     const rejected = rejectCases.filter(c => !c.is_duplicate).length;
     const newCount = validPayslip.filter(c => c.status === 'new').length;
@@ -2303,7 +2302,6 @@ const Logic = {
     const total = validPayslip.length;
     // KPI count excludes rejected cases this month (item 4)
     const submitted = submitCases.filter(c => !c.is_duplicate && c.status !== 'rejected').length;
-    const submittedRaw = submitCases.filter(c => !c.is_duplicate).length;
     const disbursed = disburseCases.filter(c => !c.is_duplicate).length;
     const newCount = validPayslip.filter(c => c.status === 'new').length;
     // KFI is on the disbursing leader (not original CS), so include all disbursed by this leader
@@ -2333,7 +2331,7 @@ const Logic = {
     const rejectCases = this.monthlyRejectCases(opts);
     
     const total = payslipCases.length;
-    const submitted = submitCases.length;
+    const submitted = submitCases.filter(c => c.status !== 'rejected').length;
     const disbursed = disburseCases.length;
     const rejected = rejectCases.length;
     const newCount = payslipCases.filter(c => c.status === 'new').length;
