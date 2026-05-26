@@ -5293,7 +5293,7 @@ if (!Permissions.canViewAllBranches(user)) {
     } else if (filterBranch !== 'all') {
       leaders = leaders.filter(u => u.branch_id === filterBranch);
     }
-    const totalAll = DB.cases().length;
+    const totalAll = Permissions.canViewAllBranches(user) ? DB.cases().length : DB.cases().filter(c => c.branch_id === user.branch_id).length;
     const staffViewing = filterStaff ? DB.user(filterStaff) : null;
     
     return this.topBar(user, 'Customer Database', staffViewing ? `Filtered: ${staffViewing.name}` : 'All company customers') + `
