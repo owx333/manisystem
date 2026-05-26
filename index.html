@@ -3516,7 +3516,7 @@ ${isAdminLike ? `
     const user = Auth.current();
     if (!Permissions.canDelete(user)) { toast('No permission to delete'); return; }
     
-    const confirmText = `DELETE customer "${c.customer_name}" permanently?\n\nThis cannot be undone.\n\n⚠ Notification akan dihantar kepada Boss/Manager/Admin/HQ.`;
+   const confirmText = `DELETE customer "${c.customer_name}" permanently?\n\nThis cannot be undone.\n\n⚠ Notification akan dihantar kepada HQ, Manager, Admin dan Leader berkaitan.`;
     if (!confirm(confirmText)) return;
     
     // Capture customer details for notification BEFORE deletion (we lose access after)
@@ -3562,12 +3562,35 @@ ${isAdminLike ? `
     toast('Customer deleted · sending notifications...');
     this.render();
     
-    // Broadcast notification (async) - notify Boss + Manager + Admin (Kerani) + HQ
+// Broadcast notification (async) - notify HQ + same branch: kerani, manager, solo/leader (case owner only)
     try {
-      const result = await DB.broadcastNotification(
-        ['admin', 'manager', 'kerani', 'hq'],
-        notifData
+      const caseBranchId = c.branch_id || DB.user(c.leader_id || c.source_cs_id)?.branch_id;
+      const caseLeader = DB.user(c.leader_id);
+      const allUsers = DB.users().filter(u => !u.inactive);
+      const recipients = allUsers.filter(u => {
+        if (u.id === user.id) return false; // jangan notif diri sendiri
+        if (u.role === 'hq') return true; // HQ semua
+        if (u.branch_id !== caseBranchId) return false; // lain branch, skip
+        if (u.role === 'manager') return true; // manager same branch
+        if (u.role === 'kerani') return true; // admin same branch
+        if (caseLeader?.role === 'solo') return false; // solo case: skip leader
+        if (u.role === 'leader' && u.id === c.leader_id) return true; // team leader case: notif that leader only
+        if (u.role === 'solo' && u.id === c.leader_id) return true; // solo case owner
+        return false;
+      });
+      const results = await Promise.all(
+        recipients.map(async u => {
+          const ok = await DB.addNotification(u.id, notifData);
+          return { user: u, ok };
+        })
       );
+      const successful = results.filter(r => r.ok);
+      const failed = results.filter(r => !r.ok);
+      const result = {
+        count: successful.length,
+        recipientNames: successful.map(r => r.user.name),
+        failed: failed.map(r => r.user.name)
+      };
       
       console.log(`🔔 Notification result:`, result);
       
