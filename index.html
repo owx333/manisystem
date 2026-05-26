@@ -695,8 +695,8 @@ body.app-ready #app { opacity: 1; transition: opacity 0.2s; }
 </head>
 <body>
 
-<!-- Demo persona switcher (remove in production) -->
-<div class="persona-bar" id="persona-bar">
+<!-- Demo persona switcher (dev mode only - shown with ?dev=1) -->
+<div class="persona-bar" id="persona-bar" style="display:none">
   <span class="lbl"> </span>
 </div>
 
@@ -1459,11 +1459,11 @@ const DB = {
         allUsers.filter(u => u.role === 'kerani' && u.branch_id === caseBranch).forEach(u => notify(u.id));
         allUsers.filter(u => u.role === 'admin').forEach(u => notify(u.id));
         allUsers.filter(u => u.role === 'manager' && u.branch_id === caseBranch).forEach(u => notify(u.id));
-} else if (editorRole === 'admin') {
-  allUsers.filter(u => u.role === 'kerani' && u.branch_id === caseBranch).forEach(u => notify(u.id));
-  allUsers.filter(u => u.role === 'hq').forEach(u => notify(u.id));
-  allUsers.filter(u => u.role === 'manager' && u.branch_id === caseBranch).forEach(u => notify(u.id));
-}
+      } else if (editorRole === 'admin') {
+        allUsers.filter(u => u.role === 'kerani' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+        allUsers.filter(u => u.role === 'hq').forEach(u => notify(u.id));
+        allUsers.filter(u => u.role === 'manager' && u.branch_id === caseBranch).forEach(u => notify(u.id));
+      }
     }
     
     return cases[idx];
@@ -2520,8 +2520,8 @@ function fmt(n) {
 }
 function fmtK(n) {
   if (!n || n === 0) return '0';
-  if (n >= 1000) return (n / 1000).toFixed(2).replace(/\.0$/, '') + 'k';
-  return String(n);
+  if (n >= 1000) return (n / 1000).toFixed(2).replace(/\.00$/, '') + 'k';
+  return Number(n).toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 function fmtRM(n) { return 'RM ' + fmt(n); }
 function initials(name) { 
@@ -2536,10 +2536,12 @@ function teamName(leaderId) {
   return l ? l.name : '—';
 }
 function toast(msg) {
+  const container = document.getElementById('toast-container');
+  if (!container) { console.log('[toast]', msg); return; }
   const t = document.createElement('div');
   t.className = 'toast';
   t.textContent = msg;
-  document.getElementById('toast-container').appendChild(t);
+  container.appendChild(t);
   setTimeout(() => t.remove(), 2500);
 }
 function showModal(html) {
@@ -3325,7 +3327,7 @@ ${isAdminLike ? `
       hrmis_password: document.getElementById('ec-hrmis').value.trim() || null,
     };
     DB.updateCase(caseId, updates);
-    toast('passworddikemaskini ✓');
+    toast('Password dikemaskini ✓');
     this.viewCase(caseId);
   },
   
@@ -3402,8 +3404,6 @@ ${isAdminLike ? `
       console.error('Broadcast notification failed:', e);
       toast('⚠ Customer deleted but notifications may have failed · check console');
     }
-    
-    this.render();
   },
   
   // ============ CUSTOMER HISTORY ============
@@ -5381,15 +5381,16 @@ if (!Permissions.canViewAllBranches(user)) {
   
   setSearch(val) {
     this.state.searchText = val;
-    // Re-render the customer list section only (to not lose focus)
-    // For simplicity, do a full re-render but preserve focus
-    const cursorPos = document.querySelector('.search-input')?.selectionStart;
-    this.render();
-    const input = document.querySelector('.search-input');
-    if (input) {
-      input.focus();
-      if (cursorPos !== undefined) input.setSelectionRange(cursorPos, cursorPos);
-    }
+    clearTimeout(this._searchTimer);
+    this._searchTimer = setTimeout(() => {
+      const cursorPos = document.querySelector('.search-input')?.selectionStart;
+      this.render();
+      const input = document.querySelector('.search-input');
+      if (input) {
+        input.focus();
+        if (cursorPos !== undefined) input.setSelectionRange(cursorPos, cursorPos);
+      }
+    }, 180);
   },
   
   // Admin Customer Card - shows more info for admin overview
@@ -5446,7 +5447,7 @@ if (!Permissions.canViewAllBranches(user)) {
       <div class="form-row">
         <div class="form-group">
           <label>IC Number</label>
-          <input type="text" id="ec-ic" value="${c.ic || ''}">
+          <input type="text" id="ec-ic" value="${c.ic || ''}" inputmode="numeric" pattern="[0-9]*" maxlength="12" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
         </div>
         <div class="form-group">
           <label>Phone</label>
@@ -5498,7 +5499,7 @@ if (!Permissions.canViewAllBranches(user)) {
   saveEditCustomer(caseId) {
     const name = document.getElementById('ec-name').value.trim();
     if (!name) { toast('Name required'); return; }
-    const ic = document.getElementById('ec-ic').value.trim();
+    const ic = document.getElementById('ec-ic').value.replace(/[^0-9]/g, '');
     const phone = document.getElementById('ec-phone').value.trim();
     const pend = parseFloat(document.getElementById('ec-pend').value) || 0;
     const pot = parseFloat(document.getElementById('ec-pot').value) || 0;
@@ -7622,17 +7623,25 @@ async function bootstrap() {
       }
       
       // Subscribe to real-time updates - all subscribers now trigger UI refresh
+      // Debounced render: batches rapid simultaneous cloud updates into one render
+      let _renderTimer = null;
+      function debouncedRender() {
+        clearTimeout(_renderTimer);
+        _renderTimer = setTimeout(() => {
+          if (App.state.currentScreen !== 'login') App.render();
+        }, 300);
+      }
       window.Cloud.subscribe('cases', items => {
         DB.set(DB.K.cases, items);
-        if (App.state.currentScreen !== 'login') App.render();
+        debouncedRender();
       });
       window.Cloud.subscribe('users', items => {
         DB.set(DB.K.users, items);
-        if (App.state.currentScreen !== 'login') App.render();
+        debouncedRender();
       });
       window.Cloud.subscribe('activities', items => {
         DB.set(DB.K.activities, items);
-        if (App.state.currentScreen !== 'login') App.render();
+        debouncedRender();
       });
       window.Cloud.subscribe('customer_notes', items => {
         const obj = {};
@@ -7642,16 +7651,16 @@ async function bootstrap() {
       window.Cloud.subscribe('koperasi', items => {
         DB.set(DB.K.koperasi, items);
         refreshPackages();
-        if (App.state.currentScreen !== 'login') App.render();
+        debouncedRender();
       });
       window.Cloud.subscribe('announcements', items => {
         DB.set(DB.K.announcements, items);
-        if (App.state.currentScreen !== 'login') App.render();
+        debouncedRender();
       });
       window.Cloud.subscribe('branches', items => {
         if (items.length > 0) {
           DB.set(DB.K.branches, items);
-          if (App.state.currentScreen !== 'login') App.render();
+          debouncedRender();
         }
       });
       // Subscribe to notifications for current user
@@ -7663,7 +7672,7 @@ async function bootstrap() {
           const all = DB.get(DB.K.notifications, {});
           all[user.id] = myNotif.items || [];
           DB.set(DB.K.notifications, all);
-          if (App.state.currentScreen !== 'login') App.render();
+          debouncedRender();
         }
       });
       // Settings is a single doc 'main' - listen to update all clients
@@ -7674,7 +7683,7 @@ async function bootstrap() {
           if (!App.state.settingsDirty) {
             DB.set(DB.K.settings, main);
             refreshSettings();
-            if (App.state.currentScreen !== 'login') App.render();
+            debouncedRender();
           } else {
             console.log('Settings cloud update received but user has unsaved local draft - ignored');
           }
@@ -7698,7 +7707,7 @@ async function bootstrap() {
 
     // Add HQ user if not exists
     if (!users.find(u => u.id === 'hq')) {
-      users.push({ id: 'hq', name: 'HQ', role: 'hq', branch_id: 'hq', leader_id: null, password: '1234' });
+      users.push({ id: 'hq', name: 'HQ', role: 'hq', branch_id: 'hq', leader_id: null, password: 'Awara@HQ2026' });
       changed = true;
     }
 
@@ -7907,9 +7916,9 @@ setTimeout(() => {
   if (window.Cloud && window.Cloud.connected) return;  // all good
   if (window.Cloud && window.Cloud.error) showCloudDiagnostic();  // error captured
   else if (typeof window.Cloud === 'undefined') showCloudDiagnostic();  // SDK didn't load at all
-}, 11000);
+}, 500);
 
-// Cloud status indicator polling
+// Cloud status indicator polling (10s interval - saves mobile battery)
 setInterval(() => {
   const statusEl = document.getElementById('cloud-status');
   if (!statusEl) return;
@@ -7917,7 +7926,7 @@ setInterval(() => {
   statusEl.textContent = ok ? '☁ ✓' : '☁ offline';
   statusEl.style.background = ok ? 'rgba(46, 125, 50, 0.2)' : 'rgba(184, 66, 58, 0.2)';
   statusEl.style.color = ok ? '#A5D6A7' : '#FFB4A8';
-}, 2000);
+}, 10000);
 </script>
 
 </body>
