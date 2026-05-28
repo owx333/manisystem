@@ -6666,9 +6666,14 @@ openEditCustomer(caseId) {
         </div>
       </div>
       
-      <div class="form-group">
+<div class="form-group">
         <label>Date Payslip</label>
         <input type="date" id="ec-date" value="${c.date_payslip}">
+      </div>
+      
+      <div class="form-group">
+        <label>💵 Payout (RM) — berapa koperasi keluar duit ke customer</label>
+        <input type="number" id="ec-payout" value="${c.payout_amount || ''}" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 35000.00">
       </div>
       
       ${c.package_id ? `
@@ -6689,7 +6694,7 @@ openEditCustomer(caseId) {
     document.getElementById('ec-pct').textContent = pct.toFixed(2) + '%';
   },
   
-  saveEditCustomer(caseId) {
+saveEditCustomer(caseId) {
     const name = document.getElementById('ec-name').value.trim();
     if (!name) { toast('Name required'); return; }
     const ic = document.getElementById('ec-ic').value.replace(/[^0-9]/g, '');
@@ -6697,6 +6702,8 @@ openEditCustomer(caseId) {
     const pend = parseFloat(document.getElementById('ec-pend').value) || 0;
     const pot = parseFloat(document.getElementById('ec-pot').value) || 0;
     const date = document.getElementById('ec-date').value;
+    const payoutEl = document.getElementById('ec-payout');
+    const payout = payoutEl ? (parseFloat(payoutEl.value) || null) : null;
     const { bersih, pct } = calcGajiBersih(pend, pot);
     
     DB.updateCase(caseId, {
@@ -6707,6 +6714,7 @@ openEditCustomer(caseId) {
       gaji_bersih: bersih,
       gaji_bersih_pct: pct,
       date_payslip: date,
+      payout_amount: payout,
     });
     
     toast('Customer info updated');
@@ -8530,7 +8538,7 @@ if (type === 'disbursed') {
       rows.push(['DAILY SUBMISSION', dateLabel]);
       rows.push(['Generated:', new Date().toLocaleString('en-MY')]);
       rows.push([]);
-      rows.push(['NO', 'DATE EMAIL', 'STAFF', 'NAMA CUSTOMER', 'NO IC', 'NO H/P', 'PACKAGE', 'TENURE', 'LOAN AMOUNT', 'KFI', 'ANM', 'HRMIS', 'APPROVED AMOUNT', 'APPROVED DATE', 'DISBURSE DATE', 'MAJIKAN', 'DATE POSTAGE', 'POSTAGE NUMBER', 'DATE RECEIVE', 'STATUS / REMARK', 'REMARK ADMIN']);
+      rows.push(['NO', 'DATE EMAIL', 'STAFF', 'NAMA CUSTOMER', 'NO IC', 'NO H/P', 'PACKAGE', 'TENURE', 'LOAN AMOUNT', 'KFI', 'ANM', 'HRMIS', 'PAYOUT', 'APPROVED AMOUNT', 'APPROVED DATE', 'DISBURSE DATE', 'MAJIKAN', 'DATE POSTAGE', 'POSTAGE NUMBER', 'DATE RECEIVE', 'STATUS / REMARK', 'REMARK ADMIN']);
 
       let no = 1;
       cases.forEach(c => {
@@ -8550,6 +8558,7 @@ if (type === 'disbursed') {
           (c.payout || c.disburse_amount || c.approved_amount || c.loan_amount || 0).toFixed(2),
           c.anm_password || '',
           c.hrmis_password || '',
+          (c.payout_amount || 0).toFixed(2),
           (c.approved_amount || 0).toFixed(2),
           c.date_approved || '',
           c.date_disbursed || '',
@@ -8690,7 +8699,7 @@ if (type === 'disbursed') {
         'Bulanan', 'Case Type',
         'Date Payslip', 'Date Submitted', 'Date Approved', 'Date Disbursed',
         'Approved Amount', 'Disbursed Amount',
-        'AMM Pass', 'HRMIS Pass',
+        'AMM Pass', 'HRMIS Pass', 'Payout',
         'Pending Reason', 'Hold Reason', 'Rejection Reason',
         'Follow-up Date', 'Follow-up Note',
         'Remark Admin', 'Created', 'Duplicate?'
@@ -8732,6 +8741,7 @@ if (type === 'disbursed') {
           (c.disbursed_amount || c.disburse_amount || 0).toFixed(2),
           c.anm_password || '',
           c.hrmis_password || '',
+          (c.payout_amount || 0).toFixed(2),
           c.pending_reason || '',
           c.hold_reason || '',
           c.rejection_reason || '',
