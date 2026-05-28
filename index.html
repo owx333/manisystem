@@ -6823,15 +6823,17 @@ if (currentUser.role === 'hq' && u.role === 'admin') {
       
       <div class="form-group">
         <label>Role</label>
-        <div class="case-type-pills" id="eu-role">
-          <div class="case-type-pill ${u.role === 'cs' ? 'active' : ''}" data-val="cs" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='';">CS</div>
-          <div class="case-type-pill ${u.role === 'leader' ? 'active' : ''}" data-val="leader" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='';">Team Leader</div>
-          <div class="case-type-pill ${u.role === 'solo' ? 'active' : ''}" data-val="solo" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='';">Solo Leader</div>
-          <div class="case-type-pill ${u.role === 'manager' ? 'active' : ''}" data-val="manager" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='';">Manager</div>
-          <div class="case-type-pill ${u.role === 'kerani' ? 'active' : ''}" data-val="kerani" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='';">Admin</div>
-          <div class="case-type-pill ${u.role === 'admin' ? 'active' : ''}" data-val="admin" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='none';">Boss</div>
-          <div class="case-type-pill ${u.role === 'hq' ? 'active' : ''}" data-val="hq" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='none';">HQ</div>
-        </div>
+<div class="case-type-pills" id="eu-role">
+  <div class="case-type-pill ${u.role === 'cs' ? 'active' : ''}" data-val="cs" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='';">CS</div>
+  <div class="case-type-pill ${u.role === 'leader' ? 'active' : ''}" data-val="leader" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='';">Team Leader</div>
+  <div class="case-type-pill ${u.role === 'solo' ? 'active' : ''}" data-val="solo" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='';">Solo Leader</div>
+  <div class="case-type-pill ${u.role === 'manager' ? 'active' : ''}" data-val="manager" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='';">Manager</div>
+  <div class="case-type-pill ${u.role === 'kerani' ? 'active' : ''}" data-val="kerani" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='';">Admin</div>
+  ${currentUser.role === 'admin' ? `
+  <div class="case-type-pill ${u.role === 'admin' ? 'active' : ''}" data-val="admin" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='none';">Boss</div>
+  <div class="case-type-pill ${u.role === 'hq' ? 'active' : ''}" data-val="hq" onclick="App.pickRolePill(this, 'eu'); document.getElementById('eu-branch-group').style.display='none';">HQ</div>
+  ` : ''}
+</div>
       </div>
       
       <div class="form-group" id="eu-leader-group" style="display: ${u.role === 'cs' ? 'block' : 'none'};">
