@@ -3165,8 +3165,10 @@ const App = {
       default: content = this.renderCSDashboard(user);
     }
     
-    app.innerHTML = content + this.renderBottomNav(user, screen) + this.renderFab(screen);
-    this.bindCommonEvents();
+app.innerHTML = content + this.renderBottomNav(user, screen) + this.renderFab(screen);
+const screenEl = app.querySelector('.screen');
+if (screenEl) screenEl.classList.add('active');
+this.bindCommonEvents();
     if (screen === 'add-case') this.bindAddCase(user);
     if (screen.startsWith('cs-') || screen.startsWith('leader-')) this.bindTargets(user);
   },
