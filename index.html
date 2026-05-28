@@ -3701,8 +3701,10 @@ if (isLeader && (this.state.tabState.cases || 'mine') === 'team') {
     if (!silent) this.render();
   },
   
-  setSearchCS(val) {
-    this.state.searchTextCS = val;
+setSearchCS(val) {
+  this.state.searchTextCS = val;
+  clearTimeout(this._searchCSTimer);
+  this._searchCSTimer = setTimeout(() => {
     const cursorPos = document.querySelector('.search-input')?.selectionStart;
     this.render();
     const input = document.querySelector('.search-input');
@@ -3710,7 +3712,8 @@ if (isLeader && (this.state.tabState.cases || 'mine') === 'team') {
       input.focus();
       if (cursorPos !== undefined) input.setSelectionRange(cursorPos, cursorPos);
     }
-  },
+  }, 180);
+},
   
   setFilter(key, value) {
     this.state.filterState[key] = value;
@@ -8719,8 +8722,8 @@ if (type === 'disbursed') {
           c.ic || '',
           c.phone || '',
           c.majikan || '',
-          (c.pendapatan || 0).toFixed(2),
-          (c.potongan || 0).toFixed(2),
+          (c.jumlah_pendapatan || 0).toFixed(2),
+          (c.jumlah_potongan || 0).toFixed(2),
           (c.gaji_bersih || 0).toFixed(2),
           (c.gaji_bersih_pct || 0).toFixed(1) + '%',
           csUser?.name || c.source_cs_id || '',
