@@ -885,20 +885,20 @@ body.app-ready #app { opacity: 1; transition: opacity 0.2s; }
 // ==================== CONSTANTS ====================
 // Default packages used to seed Firestore on first run
 const DEFAULT_PACKAGES = [
-  { id: 'YAYASAN_PERLIS', name: 'YAYASAN PERLIS', rate: 6.65, payout: 79, type: 'normal', remarks: 'High payout · low rate', isBonus: false },
-  { id: 'KOBENA', name: 'KOBENA', rate: 9.99, payout: 77, type: 'normal', remarks: '', isBonus: false },
-  { id: 'EVERGREEN', name: 'EVERGREEN', rate: 7.99, payout: 75, type: 'normal', remarks: '', isBonus: false },
-  { id: 'KOBESI', name: 'KOBESI NORMAL', rate: 10, payout: 75, type: 'normal', remarks: '', isBonus: false },
-  { id: 'YTAA', name: 'YTAA', rate: 7.99, payout: 70, type: 'normal', remarks: 'Bonus: +1% extra commission', isBonus: true },
-  { id: 'KOMUJA', name: 'KOMUJA', rate: 7.99, payout: 70, type: 'normal', remarks: 'Bonus: +1% extra commission', isBonus: true },
-  { id: 'PORTIER', name: 'PORTIER', rate: 6.99, payout: 68, type: 'normal', remarks: '', isBonus: false },
-  { id: 'GIAT_MAJU', name: 'GIAT MAJU', rate: 9.5, payout: 50, type: 'normal', remarks: '', isBonus: false },
-  { id: 'PELADANG', name: 'PELADANG', rate: 10, payout: 50, type: 'normal', remarks: '', isBonus: false },
-  { id: 'KOSPEM', name: 'KOSPEM', rate: 12, payout: 50, type: 'normal', remarks: '', isBonus: false },
-  { id: 'KOWARIS', name: 'KOWARIS', rate: 9.99, payout: 50, type: 'normal', remarks: '', isBonus: false },
-  { id: 'KRISS', name: 'KRISS', rate: 8.99, payout: 50, type: 'normal', remarks: '', isBonus: false },
-  { id: 'KOMAJU', name: 'KOMAJU', rate: 10.99, payout: 50, type: 'normal', remarks: '', isBonus: false },
-  { id: 'KPPMB', name: 'KPPMB', rate: 10, payout: 50, type: 'normal', remarks: '', isBonus: false },
+  { id: 'YAYASAN_PERLIS', name: 'YAYASAN PERLIS', rate: 6.65, payout: 79, commission_pct: 0, type: 'normal', remarks: 'High payout · low rate', isBonus: false },
+  { id: 'KOBENA', name: 'KOBENA', rate: 9.99, payout: 77, commission_pct: 0, type: 'normal', remarks: '', isBonus: false },
+  { id: 'EVERGREEN', name: 'EVERGREEN', rate: 7.99, payout: 75, commission_pct: 0, type: 'normal', remarks: '', isBonus: false },
+  { id: 'KOBESI', name: 'KOBESI NORMAL', rate: 10, payout: 75, commission_pct: 0, type: 'normal', remarks: '', isBonus: false },
+  { id: 'YTAA', name: 'YTAA', rate: 7.99, payout: 70, commission_pct: 0, type: 'normal', remarks: 'Bonus: +1% extra commission', isBonus: true },
+  { id: 'KOMUJA', name: 'KOMUJA', rate: 7.99, payout: 70, commission_pct: 0, type: 'normal', remarks: 'Bonus: +1% extra commission', isBonus: true },
+  { id: 'PORTIER', name: 'PORTIER', rate: 6.99, payout: 68, commission_pct: 0, type: 'normal', remarks: '', isBonus: false },
+  { id: 'GIAT_MAJU', name: 'GIAT MAJU', rate: 9.5, payout: 50, commission_pct: 0, type: 'normal', remarks: '', isBonus: false },
+  { id: 'PELADANG', name: 'PELADANG', rate: 10, payout: 50, commission_pct: 0, type: 'normal', remarks: '', isBonus: false },
+  { id: 'KOSPEM', name: 'KOSPEM', rate: 12, payout: 50, commission_pct: 0, type: 'normal', remarks: '', isBonus: false },
+  { id: 'KOWARIS', name: 'KOWARIS', rate: 9.99, payout: 50, commission_pct: 0, type: 'normal', remarks: '', isBonus: false },
+  { id: 'KRISS', name: 'KRISS', rate: 8.99, payout: 50, commission_pct: 0, type: 'normal', remarks: '', isBonus: false },
+  { id: 'KOMAJU', name: 'KOMAJU', rate: 10.99, payout: 50, commission_pct: 0, type: 'normal', remarks: '', isBonus: false },
+  { id: 'KPPMB', name: 'KPPMB', rate: 10, payout: 50, commission_pct: 0, type: 'normal', remarks: '', isBonus: false },
 ];
 
 // Mutable - populated from DB.koperasi() on init
@@ -1181,7 +1181,12 @@ const Permissions = {
   isKeraniOnly: u => u?.role === 'kerani',
   
   // Can see system notifications (alerts) — Boss + Manager + Admin (kerani) + HQ
-  canSeeNotifications: u => ['admin', 'manager', 'kerani', 'hq'].includes(u?.role)
+  canSeeNotifications: u => ['admin', 'manager', 'kerani', 'hq'].includes(u?.role),
+  
+  // Can see COMPANY PROFIT (commission earned from koperasi) — Boss + Manager + HQ
+  // Manager included because they have profit-sharing stake with company
+  // CS/Leader/Solo/Kerani do NOT see company profit
+  canViewProfit: u => ['admin', 'manager', 'hq'].includes(u?.role)
 };
 
 // ==================== USERS (14 staff + 1 admin) ====================
@@ -1439,7 +1444,21 @@ const DB = {
       this._cache[key] = val;            // Update cache
       delete this._lookupCache[key];     // Invalidate id-lookup for this key
       return true; 
-    } catch { return false; }
+    } catch (e) {
+      // QuotaExceededError or SecurityError. Even in failure, update in-memory cache
+      // so the UI reflects the user's intent until they refresh.
+      this._cache[key] = val;
+      delete this._lookupCache[key];
+      if (e.name === 'QuotaExceededError' || (e.message || '').toLowerCase().includes('quota')) {
+        Logger.error('localStorage QUOTA EXCEEDED for key:', key, '· data lives only in memory now');
+        if (typeof toast === 'function') {
+          toast('⚠ Storage penuh · data tidak save permanently. Sila download backup & contact admin.');
+        }
+      } else {
+        Logger.error('localStorage.set failed:', e);
+      }
+      return false; 
+    }
   },
   
   // O(1) lookup by id - builds Map index on first call, cached until set() invalidates
@@ -1933,7 +1952,16 @@ const recipients = allUsers.filter(u =>
   // Session
   session() { return this.get(this.K.session, null); },
   setSession(userId) { this.set(this.K.session, { userId, loginAt: Date.now() }); },
-  clearSession() { localStorage.removeItem(this.K.session); },
+  clearSession() { this.remove(this.K.session); },
+  
+  // Remove a key — properly invalidates in-memory cache (use this instead of localStorage.removeItem)
+  // BUG FIX: previously clearSession used localStorage.removeItem directly, but the in-memory _cache
+  // still held the session data, so Auth.current() returned the old user → logout didn't redirect to login.
+  remove(key) {
+    localStorage.removeItem(key);
+    delete this._cache[key];
+    delete this._lookupCache[key];
+  },
 
   // ── Notifications ──
   notifications(userId) {
@@ -2119,6 +2147,34 @@ const Logic = {
   
   isSolo(user) {
     return user && user.role === 'solo';
+  },
+  
+  // ============ COMPANY PROFIT CALCULATION ============
+  // Calculate profit earned by company from a single case.
+  // profit = disbursed_amount × commission_pct / 100
+  // Only disbursed cases generate profit. Commission % comes from koperasi config.
+  caseProfit(caseObj) {
+    if (!caseObj || caseObj.status !== 'disbursed') return 0;
+    const disbursedAmt = caseObj.disbursed_amount || caseObj.disburse_amount || 0;
+    if (disbursedAmt <= 0) return 0;
+    const pkg = LOAN_PACKAGES.find(p => p.id === caseObj.package_id);
+    const pct = pkg?.commission_pct || 0;
+    return disbursedAmt * pct / 100;
+  },
+  
+  // Total profit across an array of cases
+  totalProfit(cases) {
+    return cases.reduce((sum, c) => sum + this.caseProfit(c), 0);
+  },
+  
+  // Total profit for a month (e.g. '2026-05'), optionally filtered by branch
+  monthlyProfit(ym, branchId = null) {
+    let cases = DB.cases().filter(c => 
+      c.status === 'disbursed' && 
+      (c.date_disbursed || '').startsWith(ym)
+    );
+    if (branchId) cases = cases.filter(c => c.branch_id === branchId);
+    return this.totalProfit(cases);
   },
   
   // Find the primary Manager user (for resign re-assignment) - first active manager
@@ -2909,6 +2965,19 @@ const Logic = {
 };
 
 // ==================== UI HELPERS ====================
+// Escape HTML to prevent XSS from user-controlled data (customer names, IC, notes, etc).
+// Although our app is internal (14 staff, controlled domain), defense-in-depth is good practice.
+// Use this for any user-typed string that goes into innerHTML/template literal output.
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function fmt(n) { 
   if (n === null || n === undefined) return '0';
   return Number(n).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3157,7 +3226,19 @@ const App = {
   
   logout() {
     Auth.logout();
+    // Clear app state to prevent stale data leaks
     this.state.currentScreen = 'login';
+    this.state.notifFilter = null;
+    this.state.bulkMode = false;
+    this.state.bulkSelected = [];
+    this.state.searchText = '';
+    // Force-clear any in-memory cache too (defensive)
+    if (DB._cache) {
+      delete DB._cache[DB.K.session];
+      delete DB._lookupCache[DB.K.session];
+    }
+    // Cancel idle timer if active
+    if (this._idleTimer) clearTimeout(this._idleTimer);
     this.render();
   },
   
@@ -3198,35 +3279,42 @@ const App = {
     const name = document.getElementById('login-name').value.trim();
     const pass = document.getElementById('login-pass').value;
     const err = document.getElementById('login-error');
-    const result = await Auth.login(name, pass);
-    if (!result.ok) {
-      err.textContent = result.error;
-      err.classList.add('show');
-      if (result.locked) {
-        err.style.background = '#FEE2E2';
-        err.style.color = '#991B1B';
-        err.style.padding = '10px 14px';
-        err.style.borderRadius = '10px';
-        err.style.fontWeight = '700';
+    
+    try {
+      const result = await Auth.login(name, pass);
+      if (!result.ok) {
+        err.textContent = result.error;
+        err.classList.add('show');
+        if (result.locked) {
+          err.style.background = '#FEE2E2';
+          err.style.color = '#991B1B';
+          err.style.padding = '10px 14px';
+          err.style.borderRadius = '10px';
+          err.style.fontWeight = '700';
+        }
+        return;
       }
-      return;
+      err.classList.remove('show');
+      this.state.currentScreen = this.defaultScreen(result.user);
+      
+      // Load notifications from Firestore for this user after login
+      if (window.Cloud?.connected) {
+        window.Cloud.getDoc('notifications', result.user.id).then(doc => {
+          if (doc && doc.items) {
+            const all = DB.get(DB.K.notifications, {});
+            all[result.user.id] = doc.items;
+            DB.set(DB.K.notifications, all);
+            App.render();
+          }
+        }).catch(() => {});
+      }
+      
+      this.render();
+    } catch (e) {
+      console.error('Login error:', e);
+      err.textContent = 'Login error: ' + (e.message || 'Unknown') + ' · Sila refresh page';
+      err.classList.add('show');
     }
-err.classList.remove('show');
-this.state.currentScreen = this.defaultScreen(result.user);
-
-// Load notifications from Firestore for this user after login
-if (window.Cloud?.connected) {
-  window.Cloud.getDoc('notifications', result.user.id).then(doc => {
-    if (doc && doc.items) {
-      const all = DB.get(DB.K.notifications, {});
-      all[result.user.id] = doc.items;
-      DB.set(DB.K.notifications, all);
-      App.render();
-    }
-  }).catch(() => {});
-}
-
-this.render();
   },
   
   // ============ TOP BAR ============
@@ -3710,7 +3798,23 @@ if (isLeader && (this.state.tabState.cases || 'mine') === 'team') {
             ${c.date_approved ? `<div><span style="color: var(--ink-3);">Approved:</span> <strong>${new Date(c.date_approved).toLocaleDateString('en-MY')}</strong></div>` : ''}
             ${c.approved_amount && c.approved_amount !== c.loan_amount ? `<div><span style="color: var(--ink-3);">Approved Amt:</span> <strong>${fmtRM(c.approved_amount)}</strong></div>` : ''}
           </div>
-          ${c.disburse_amount ? `<div style="margin-top: 10px; padding: 10px 12px; background: var(--success); color: white; border-radius: 8px; font-size: 12px; font-weight: 700; display: flex; justify-content: space-between; align-items: center;"><span>Disbursed: ${fmtRM(c.disburse_amount)}</span><span style="font-size: 10px; opacity: 0.8;">${c.date_disbursed ? new Date(c.date_disbursed).toLocaleDateString('en-MY') : ''}</span></div>` : ''}
+          ${c.disburse_amount ? (() => {
+            const profit = Logic.caseProfit(c);
+            const pkgObj = LOAN_PACKAGES.find(p => p.id === c.package_id);
+            const pct = pkgObj?.commission_pct || 0;
+            const showProfit = Permissions.canViewProfit(user);
+            return `<div style="margin-top: 10px; padding: 10px 12px; background: var(--success); color: white; border-radius: 8px; font-size: 12px; font-weight: 700; display: flex; justify-content: space-between; align-items: center;"><span>Disbursed: ${fmtRM(c.disburse_amount)}</span><span style="font-size: 10px; opacity: 0.8;">${c.date_disbursed ? new Date(c.date_disbursed).toLocaleDateString('en-MY') : ''}</span></div>
+            ${showProfit && profit > 0 ? `
+              <div style="margin-top: 6px; padding: 8px 12px; background: linear-gradient(135deg, #16A34A 0%, #22C55E 100%); color: white; border-radius: 8px; font-size: 12px; display: flex; justify-content: space-between; align-items: center;">
+                <span>💼 Company Profit (${pct}%)</span>
+                <strong style="font-size: 14px;">${fmtRM(profit)}</strong>
+              </div>
+            ` : showProfit && pkgObj && pct === 0 ? `
+              <div style="margin-top: 6px; padding: 6px 12px; background: var(--cream-3); color: var(--ink-3); border-radius: 8px; font-size: 11px;">
+                ⚠ ${pkgObj.name} belum set commission %. Set di Koperasi → Edit.
+              </div>
+            ` : ''}`;
+          })() : ''}
           ${c.status === 'pending' && c.pending_reason ? `<div style="margin-top: 10px; padding: 10px 12px; background: #F0E4FF; color: #6B3FB8; border-radius: 8px; font-size: 12px; font-weight: 600;"><strong>Pending:</strong> ${c.pending_reason}</div>` : ''}
           ${c.status === 'rejected' && c.rejection_reason ? `<div style="margin-top: 10px; padding: 10px 12px; background: var(--danger-bg); color: var(--danger); border-radius: 8px; font-size: 12px; font-weight: 600;"><strong>Rejected:</strong> ${c.rejection_reason}${c.date_rejected ? ' · ' + new Date(c.date_rejected).toLocaleDateString('en-MY') : ''}</div>` : ''}
 ${isAdminLike ? `
@@ -5093,12 +5197,17 @@ ${isAdminLike ? `
     const stats = Logic.companyStats(branchId);
     const awards = Logic.awards(branchId);
     const teamRank = Logic.teamRanking(branchId);
+    
+    // Calculate company profit for current month (and branch if Manager)
+    const ym = new Date().toISOString().slice(0, 7);
+    const companyProfit = Permissions.canViewProfit(user) ? Logic.monthlyProfit(ym, branchId) : 0;
 
     // Branch breakdown (HQ only)
     const branches = DB.branches().filter(b => b.id !== 'hq');
     const branchBreakdown = (Permissions.canViewAllBranches(user) || user.role === 'admin') ? branches.map(b => {
       const s = Logic.companyStats(b.id);
-      return { branch: b, stats: s };
+      const p = Permissions.canViewProfit(user) ? Logic.monthlyProfit(ym, b.id) : 0;
+      return { branch: b, stats: s, profit: p };
     }) : null;
     
     return this.topBar(user, 'Boss Dashboard') + this.monthPill() + 
@@ -5114,6 +5223,13 @@ ${isAdminLike ? `
           <div class="value"><span class="currency">RM</span>${fmtK(stats.kfiAmount)}</div>
           <div class="sub">actual disburse</div>
         </div>
+        ${Permissions.canViewProfit(user) ? `
+          <div class="kpi-card" style="background: linear-gradient(135deg, #16A34A 0%, #22C55E 100%); color: white;">
+            <div class="label" style="color: rgba(255,255,255,0.85);">💼 Company Profit</div>
+            <div class="value" style="color: white;"><span class="currency" style="color: rgba(255,255,255,0.85);">RM</span>${fmtK(companyProfit)}</div>
+            <div class="sub" style="color: rgba(255,255,255,0.85);">commission earned${branchId ? ' · ' + (DB.branch(branchId)?.name || '') : ''}</div>
+          </div>
+        ` : ''}
         <div class="kpi-card lost">
           <div class="label">Rejected / Lost</div>
           <div class="value"><span class="currency">RM</span>${fmtK(stats.lostAmount)}</div>
@@ -5134,10 +5250,10 @@ ${isAdminLike ? `
       ${branchBreakdown ? `
       <div class="section-header"><div class="section-title">📊 Branch Breakdown</div></div>
       <div style="padding: 0 20px 4px;">
-        ${branchBreakdown.map(({ branch, stats: s }) => `
+        ${branchBreakdown.map(({ branch, stats: s, profit }) => `
           <div class="qa-card" style="margin-bottom: 10px;">
             <div style="font-weight: 800; font-size: 14px; margin-bottom: 10px; color: var(--primary);">🏢 ${branch.name}</div>
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center;">
+            <div style="display: grid; grid-template-columns: repeat(${Permissions.canViewProfit(user) ? '5' : '4'}, 1fr); gap: 8px; text-align: center;">
               <div>
                 <div style="font-weight: 800; font-size: 15px; color: var(--primary);">${s.total}</div>
                 <div style="font-size: 9px; color: var(--ink-3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Payslip</div>
@@ -5150,6 +5266,12 @@ ${isAdminLike ? `
                 <div style="font-weight: 800; font-size: 15px; color: var(--primary);">RM ${fmtK(s.kfiAmount)}</div>
                 <div style="font-size: 9px; color: var(--ink-3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">KFI</div>
               </div>
+              ${Permissions.canViewProfit(user) ? `
+                <div>
+                  <div style="font-weight: 800; font-size: 15px; color: var(--success);">RM ${fmtK(profit || 0)}</div>
+                  <div style="font-size: 9px; color: var(--ink-3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">💼 Profit</div>
+                </div>
+              ` : ''}
               <div>
                 <div style="font-weight: 800; font-size: 15px; color: var(--danger);">RM ${fmtK(s.lostAmount)}</div>
                 <div style="font-size: 9px; color: var(--ink-3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Rejected</div>
@@ -6733,7 +6855,7 @@ if (currentUser.role === 'hq' && u.role === 'admin') {
         const attempts = DB.loginAttempts(userId);
         const isLocked = attempts.lockedAt;
         const u2 = DB.user(userId);
-        const isSelf = userId === Auth.current().id;
+        const isSelf = userId === Auth.current()?.id;
         return `
           ${isLocked ? `<button class="btn-secondary" style="color: #059669; border-color: rgba(5,150,105,0.3); margin-top: 8px; width: 100%;" onclick="App.unlockUser('${userId}')">🔓 Buka Semula Akaun (Dikunci)</button>` : ''}
           ${u2?.inactive ? `<button class="btn-secondary" style="color: #059669; border-color: rgba(5,150,105,0.3); margin-top: 8px; width: 100%;" onclick="App.reactivateStaff('${userId}')">✅ Aktifkan Semula</button>` : (!isSelf ? `<button class="btn-secondary" style="color: #B45309; border-color: rgba(180,83,9,0.3); margin-top: 8px; width: 100%;" onclick="App.deactivateStaff('${userId}')">⏸ Deactivate (Inactive)</button>` : '')}
@@ -6826,6 +6948,8 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
   },
 
   deactivateStaff(userId) {
+    if (!Permissions.canManageStaff(Auth.current())) { toast('No permission'); return; }
+    if (userId === Auth.current()?.id) { toast('Tidak boleh deactivate diri sendiri'); return; }
     if (!confirm('Deactivate staff ini? Mereka tak boleh login tapi data mereka kekal.')) return;
     DB.updateUser(userId, { inactive: true });
     hideModal();
@@ -6834,6 +6958,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
   },
 
   reactivateStaff(userId) {
+    if (!Permissions.canManageStaff(Auth.current())) { toast('No permission'); return; }
     DB.updateUser(userId, { inactive: false });
     hideModal();
     toast('Staff aktif semula ✅');
@@ -6844,8 +6969,10 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
   // When a staff resigns: transfer all their cases to Manager, then deactivate them.
   // Manager can later reassign to other CS via Edit Customer.
   resignStaff(userId) {
+    if (!Permissions.canManageStaff(Auth.current())) { toast('No permission to manage staff'); return; }
     const u = DB.user(userId);
     if (!u) return;
+    if (userId === Auth.current()?.id) { toast('Tidak boleh resign diri sendiri'); return; }
     
     // Check Manager exists
     const manager = Logic.findManager();
@@ -6969,6 +7096,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
   },
   
   async createUser() {
+    if (!Permissions.canManageStaff(Auth.current())) { toast('No permission to manage staff'); return; }
     try {
       const nameEl = document.getElementById('nu-name');
       const idEl = document.getElementById('nu-id');
@@ -7095,11 +7223,14 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
       });
       const topPerformer = Object.values(performerStats).sort((a, b) => b.amount - a.amount)[0];
       
+      // Company profit from this branch (commission from disbursed cases)
+      const profit = Logic.totalProfit(disbursed);
+      
       return {
         branch: b,
         newCustomers, submitted, approved,
         disbursedCount: disbursed.length, disbursedAmount,
-        conversion,
+        conversion, profit,
         csCount, tlCount, mgrCount,
         topPerformer
       };
@@ -7114,10 +7245,12 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
       submitted: t.submitted + s.submitted,
       disbursedCount: t.disbursedCount + s.disbursedCount,
       disbursedAmount: t.disbursedAmount + s.disbursedAmount,
-    }), { newCustomers: 0, submitted: 0, disbursedCount: 0, disbursedAmount: 0 });
+      profit: t.profit + s.profit,
+    }), { newCustomers: 0, submitted: 0, disbursedCount: 0, disbursedAmount: 0, profit: 0 });
     
     // Max disbursed amount for relative bars
     const maxDisb = Math.max(...stats.map(s => s.disbursedAmount), 1);
+    const showProfit = Permissions.canViewProfit(user);
     
     // Month picker (last 6 months)
     const monthOptions = [];
@@ -7132,6 +7265,20 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
     
     return this.topBar(user, 'Branch Comparison', `${ym}`) + `
       <section class="screen">
+        <!-- Quick action: Manage Branches -->
+        ${Permissions.canEditSettings(user) ? `
+          <div style="padding: 14px 20px 0;">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button onclick="App.addBranch()" style="background: var(--primary); color: white; border: none; padding: 10px 16px; border-radius: 10px; font-family: inherit; font-weight: 800; font-size: 12px; cursor: pointer; flex: 1; min-width: 140px;">
+                ➕ Tambah Branch Baru
+              </button>
+              <button onclick="App.goto('admin-settings')" style="background: var(--cream-2); color: var(--ink); border: 1px solid var(--border); padding: 10px 16px; border-radius: 10px; font-family: inherit; font-weight: 700; font-size: 12px; cursor: pointer; flex: 1; min-width: 140px;">
+                ⚙️ Manage Branches
+              </button>
+            </div>
+          </div>
+        ` : ''}
+        
         <!-- Month selector -->
         <div style="padding: 14px 20px;">
           <label style="display: block; font-size: 10px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 6px;">Comparing Month</label>
@@ -7144,7 +7291,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
         <div style="padding: 0 20px 14px;">
           <div style="background: var(--primary); color: white; border-radius: 12px; padding: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
             <div style="font-size: 11px; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 800; margin-bottom: 10px;">🏢 Company Total</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div style="display: grid; grid-template-columns: ${showProfit ? '1fr 1fr 1fr' : '1fr 1fr'}; gap: 12px;">
               <div>
                 <div style="font-size: 10px; opacity: 0.8;">Disbursed</div>
                 <div style="font-size: 22px; font-weight: 800;">RM ${(totals.disbursedAmount).toLocaleString()}</div>
@@ -7155,13 +7302,31 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
                 <div style="font-size: 22px; font-weight: 800;">${totals.submitted}</div>
                 <div style="font-size: 11px; opacity: 0.8;">${totals.newCustomers} new customers</div>
               </div>
+              ${showProfit ? `
+                <div style="border-left: 1px solid rgba(255,255,255,0.2); padding-left: 12px;">
+                  <div style="font-size: 10px; opacity: 0.8;">💼 Company Profit</div>
+                  <div style="font-size: 22px; font-weight: 800; color: var(--accent);">RM ${(totals.profit).toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
+                  <div style="font-size: 11px; opacity: 0.8;">commission earned</div>
+                </div>
+              ` : ''}
             </div>
           </div>
         </div>
         
         <!-- Branch cards -->
         <div style="padding: 0 20px;">
-          ${stats.length === 0 ? this.emptyState('Tiada branches dibuat lagi. Tambah branches dari Settings.') : ''}
+          ${stats.length === 0 ? `
+            <div style="background: var(--cream-2); border: 2px dashed var(--border-2); border-radius: 14px; padding: 30px 20px; text-align: center; margin: 14px 0;">
+              <div style="font-size: 32px; margin-bottom: 10px;">🏢</div>
+              <div style="font-weight: 800; font-size: 16px; color: var(--ink); margin-bottom: 6px;">Tiada Branch lagi</div>
+              <div style="font-size: 12px; color: var(--ink-3); margin-bottom: 14px; line-height: 1.5;">Tambah cawangan untuk track performance setiap branch.<br>HQ tidak dikira sebagai branch.</div>
+              ${Permissions.canEditSettings(user) ? `
+                <button onclick="App.addBranch()" style="background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 10px; font-family: inherit; font-weight: 800; font-size: 13px; cursor: pointer;">
+                  ➕ Tambah Branch Pertama
+                </button>
+              ` : '<div style="font-size: 11px; color: var(--ink-3);">⚠ Minta Boss tambah branch</div>'}
+            </div>
+          ` : ''}
           ${stats.map((s, i) => {
             const isLeader = i === 0 && stats.length > 1;
             const barWidth = maxDisb > 0 ? Math.round((s.disbursedAmount / maxDisb) * 100) : 0;
@@ -7202,10 +7367,17 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
                 </div>
                 
                 ${s.topPerformer ? `
-                  <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-2); font-size: 11px; color: var(--ink-2);">
-                    🌟 Top: <strong>${s.topPerformer.name}</strong> · RM ${s.topPerformer.amount.toLocaleString()}
+                  <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-2); font-size: 11px; color: var(--ink-2); display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <span>🌟 Top: <strong>${s.topPerformer.name}</strong> · RM ${s.topPerformer.amount.toLocaleString()}</span>
+                    ${showProfit && s.profit > 0 ? `
+                      <span style="background: linear-gradient(135deg, #16A34A 0%, #22C55E 100%); color: white; padding: 3px 10px; border-radius: 10px; font-weight: 800; font-size: 11px;">💼 RM ${s.profit.toLocaleString(undefined, {maximumFractionDigits: 0})} profit</span>
+                    ` : ''}
                   </div>
-                ` : ''}
+                ` : (showProfit && s.profit > 0 ? `
+                  <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-2); display: flex; justify-content: flex-end;">
+                    <span style="background: linear-gradient(135deg, #16A34A 0%, #22C55E 100%); color: white; padding: 3px 10px; border-radius: 10px; font-weight: 800; font-size: 11px;">💼 RM ${s.profit.toLocaleString(undefined, {maximumFractionDigits: 0})} profit</span>
+                  </div>
+                ` : '')}
               </div>
             `;
           }).join('')}
@@ -7744,6 +7916,14 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
                   Type: <strong style="text-transform: capitalize;">${p.type || 'normal'}</strong>
                   ${p.isBonus ? ` · <span style="color: var(--accent-deep); font-weight: 700;">⭐ Bonus Eligible</span>` : ''}
                 </div>
+                <div style="font-size: 11px; margin-top: 4px;">
+                  ${Permissions.canViewProfit(user) ? `
+                    <span style="background: ${(p.commission_pct || 0) > 0 ? 'linear-gradient(135deg, #16A34A 0%, #22C55E 100%)' : 'var(--cream-3)'}; color: ${(p.commission_pct || 0) > 0 ? 'white' : 'var(--ink-3)'}; padding: 3px 10px; border-radius: 12px; font-weight: 800;">
+                      💼 Company: ${(p.commission_pct || 0).toFixed(2)}%
+                    </span>
+                    ${(p.commission_pct || 0) > 0 ? `<span style="color: var(--ink-3); margin-left: 6px;">e.g. RM 10k = <strong style="color: var(--success);">RM ${(10000 * p.commission_pct / 100).toFixed(0)}</strong> profit</span>` : '<span style="color: var(--ink-3); margin-left: 6px;">(no profit % set)</span>'}
+                  ` : ''}
+                </div>
                 ${p.remarks ? `<div style="font-size: 11px; color: var(--ink-3); margin-top: 4px; font-style: italic;">"${p.remarks}"</div>` : ''}
               </div>
               <div style="display: flex; flex-direction: column; gap: 4px;">
@@ -7776,6 +7956,12 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
           <label>Payout (%) *</label>
           <input type="number" id="kp-payout" placeholder="e.g. 75" step="1" inputmode="numeric">
         </div>
+      </div>
+      
+      <div class="form-group" style="background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%); border: 1px solid #16A34A; border-radius: 12px; padding: 12px;">
+        <label style="color: #14532D;">💼 Company Commission % (untuk profit calculation)</label>
+        <input type="number" id="kp-commission" placeholder="e.g. 8 (means 8%)" step="0.01" inputmode="decimal" value="0" style="background: white;">
+        <div style="font-size: 11px; color: #166534; margin-top: 4px;">Bila customer disburse RM 10k dengan koperasi ini, company dapat <strong>commission_pct%</strong>. e.g. 8% = RM 800 profit.</div>
       </div>
       
       <div class="form-group">
@@ -7827,6 +8013,12 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
         </div>
       </div>
       
+      <div class="form-group" style="background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%); border: 1px solid #16A34A; border-radius: 12px; padding: 12px;">
+        <label style="color: #14532D;">💼 Company Commission % (untuk profit calculation)</label>
+        <input type="number" id="kp-commission" value="${p.commission_pct || 0}" step="0.01" inputmode="decimal" style="background: white;">
+        <div style="font-size: 11px; color: #166534; margin-top: 4px;">Profit dari koperasi ini bila disburse. RM 10k × ${(p.commission_pct || 0).toFixed(2)}% = <strong>RM ${(10000 * (p.commission_pct || 0) / 100).toFixed(2)}</strong></div>
+      </div>
+      
       <div class="form-group">
         <label>Type</label>
         <div class="case-type-pills" id="kp-type">
@@ -7853,10 +8045,12 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
   },
   
   saveKoperasi(existingId) {
+    if (!Permissions.canManageKoperasi(Auth.current())) { toast('No permission untuk manage koperasi'); return; }
     try {
       const name = document.getElementById('kp-name').value.trim().toUpperCase();
       const rate = parseFloat(document.getElementById('kp-rate').value);
       const payout = parseInt(document.getElementById('kp-payout').value);
+      const commission_pct = parseFloat(document.getElementById('kp-commission').value) || 0;
       const typeEl = document.querySelector('#kp-type .case-type-pill.active');
       const type = typeEl?.dataset.val || 'normal';
       const isBonus = document.getElementById('kp-bonus').checked;
@@ -7865,12 +8059,13 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
       if (!name) { toast('Name diperlukan'); return; }
       if (!rate || rate <= 0 || rate > 50) { toast('Interest rate kena valid (0-50%)'); return; }
       if (!payout || payout <= 0 || payout > 100) { toast('Payout kena valid (0-100%)'); return; }
+      if (commission_pct < 0 || commission_pct > 100) { toast('Commission % kena 0-100'); return; }
       
-      const data = { name, rate, payout, type, isBonus, remarks };
+      const data = { name, rate, payout, commission_pct, type, isBonus, remarks };
       
       if (existingId) {
         DB.updateKoperasi(existingId, data);
-        toast('Koperasi updated');
+        toast('Koperasi updated' + (commission_pct > 0 ? ` · Profit: ${commission_pct}%` : ''));
       } else {
         const pkg = DB.addKoperasi(data);
         if (!pkg) { toast('Error · ID may exist'); return; }
@@ -7885,6 +8080,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
   },
   
   confirmDeleteKoperasi(id) {
+    if (!Permissions.canManageKoperasi(Auth.current())) { toast('No permission'); return; }
     const p = DB.koperasiById(id);
     if (!p) return;
     if (!confirm(`Delete "${p.name}" permanently?\n\nExisting cases using this koperasi will keep their data but can't be edited.`)) return;
@@ -7932,6 +8128,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
   },
   
   openAddAnnouncement() {
+    if (!Permissions.canAnnounce(Auth.current())) { toast('No permission untuk post announcement'); return; }
     showModal(`
       <div class="modal-title">Post Announcement</div>
       <div class="modal-sub">Will show on every staff's dashboard</div>
@@ -7958,6 +8155,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
   },
   
   saveAnnouncement() {
+    if (!Permissions.canAnnounce(Auth.current())) { toast('No permission'); return; }
     try {
       const title = document.getElementById('ann-title').value.trim();
       const body = document.getElementById('ann-body').value.trim();
@@ -7974,6 +8172,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
   },
   
   confirmDeleteAnnouncement(id) {
+    if (!Permissions.canAnnounce(Auth.current())) { toast('No permission'); return; }
     if (!confirm('Delete this announcement?')) return;
     DB.deleteAnnouncement(id);
     toast('Announcement deleted');
@@ -8264,13 +8463,20 @@ if (type === 'disbursed') {
         staffGroups[key].push(c);
       });
 
+      const showProfit = Permissions.canViewProfit(user);
+      
       Object.keys(staffGroups).forEach(csId => {
         const staffCases = staffGroups[csId];
         const csUser = DB.user(csId);
         const managerUser = DB.user(csUser?.leader_id);
-        rows.push(['', 'MANAGER NAME', 'STAFF NAME', 'CUST NAME', 'NO IC', 'PACKAGE', 'AMOUNT LOAN', 'STAFF KFI', 'DISBURSED DATE']);
+        const baseHeaders = ['', 'MANAGER NAME', 'STAFF NAME', 'CUST NAME', 'NO IC', 'PACKAGE', 'AMOUNT LOAN', 'STAFF KFI', 'DISBURSED DATE'];
+        if (showProfit) {
+          baseHeaders.push('COMMISSION %', 'COMPANY PROFIT (RM)');
+        }
+        rows.push(baseHeaders);
         let totalLoan = 0;
         let totalKfi = 0;
+        let totalProfit = 0;
         let no = 1;
         staffCases.forEach(c => {
           const p = LOAN_PACKAGES.find(x => x.id === c.package_id);
@@ -8278,11 +8484,29 @@ if (type === 'disbursed') {
           const kfi = c.payout || c.disburse_amount || c.approved_amount || loanAmt;
           totalLoan += loanAmt;
           totalKfi += kfi;
-          rows.push([no++, managerUser?.name || 'WILSON', csUser?.name || csId, c.customer_name, c.ic || '', p?.name || '', loanAmt.toFixed(2), kfi.toFixed(2), c.date_disbursed || '']);
+          const row = [no++, managerUser?.name || 'WILSON', csUser?.name || csId, c.customer_name, c.ic || '', p?.name || '', loanAmt.toFixed(2), kfi.toFixed(2), c.date_disbursed || ''];
+          if (showProfit) {
+            const profit = Logic.caseProfit(c);
+            totalProfit += profit;
+            row.push((p?.commission_pct || 0).toFixed(2) + '%', profit.toFixed(2));
+          }
+          rows.push(row);
         });
-        rows.push(['', '', '', 'TOTAL SUBMISSION', '', '', totalLoan.toFixed(2), totalKfi.toFixed(2)]);
+        const totalRow = ['', '', '', 'TOTAL SUBMISSION', '', '', totalLoan.toFixed(2), totalKfi.toFixed(2)];
+        if (showProfit) totalRow.push('', totalProfit.toFixed(2));
+        rows.push(totalRow);
         rows.push([]);
       });
+      
+      // Grand total profit at bottom
+      if (showProfit) {
+        const grandProfit = cases.reduce((sum, c) => sum + Logic.caseProfit(c), 0);
+        rows.push([]);
+        rows.push(['═══ GRAND TOTAL ═══']);
+        rows.push(['Total Disbursed Cases:', cases.length]);
+        rows.push(['Total Disbursed Amount:', cases.reduce((s, c) => s + (c.disbursed_amount || c.disburse_amount || 0), 0).toFixed(2)]);
+        rows.push(['Total Company Profit:', grandProfit.toFixed(2)]);
+      }
     }
 
     if (type === 'daily-submission') {
@@ -8348,36 +8572,42 @@ if (type === 'disbursed') {
       
       // If specific status, filter to that. Otherwise show all statuses grouped.
       const statusList = statusFilter !== 'all' ? [statusFilter] : statusOrder;
+      const isExcel = (this.state.exportFormat || 'xlsx') === 'xlsx';
       
-      rows.push(['CUSTOMER STATUS REPORT', ym, statusFilter !== 'all' ? `Status: ${STATUS_LABELS[statusFilter]}` : 'All Statuses']);
-      rows.push(['Generated:', new Date().toLocaleString('en-MY'), 'By:', user.name]);
-      rows.push([]);
+      // === SUMMARY SHEET ===
+      const summaryRows = [];
+      summaryRows.push(['CUSTOMER STATUS REPORT', ym, statusFilter !== 'all' ? `Status: ${STATUS_LABELS[statusFilter]}` : 'All Statuses']);
+      summaryRows.push(['Generated:', new Date().toLocaleString('en-MY'), 'By:', user.name]);
+      summaryRows.push(['Filters:', `Branch: ${branchFilter ? DB.branch(branchFilter)?.name : 'All'}`, `Staff: ${staff !== 'all' ? DB.user(staff)?.name : 'All'}`, `Package: ${pkg !== 'all' ? LOAN_PACKAGES.find(p => p.id === pkg)?.name : 'All'}`]);
+      summaryRows.push([]);
+      summaryRows.push(['STATUS BREAKDOWN']);
+      summaryRows.push(['Status', 'Count', 'Total Loan (RM)', 'Avg Loan (RM)']);
       
-      // Summary first
-      rows.push(['STATUS SUMMARY']);
-      rows.push(['Status', 'Count', 'Total Loan (RM)']);
+      let grandTotal = 0, grandCount = 0;
+      const statusBuckets = {};
+      
       statusList.forEach(s => {
         const sCases = cases.filter(c => c.status === s);
+        statusBuckets[s] = sCases;
         if (sCases.length > 0) {
           const totalLoan = sCases.reduce((sum, c) => sum + (c.loan_amount || 0), 0);
-          rows.push([STATUS_LABELS[s] || s, sCases.length, totalLoan.toFixed(2)]);
+          const avgLoan = totalLoan / sCases.length;
+          summaryRows.push([STATUS_LABELS[s] || s, sCases.length, totalLoan.toFixed(2), avgLoan.toFixed(2)]);
+          grandTotal += totalLoan;
+          grandCount += sCases.length;
         }
       });
-      rows.push(['TOTAL', cases.filter(c => statusList.includes(c.status)).length, cases.filter(c => statusList.includes(c.status)).reduce((s, c) => s + (c.loan_amount || 0), 0).toFixed(2)]);
-      rows.push([]);
+      summaryRows.push(['TOTAL', grandCount, grandTotal.toFixed(2), grandCount > 0 ? (grandTotal / grandCount).toFixed(2) : '0']);
       
-      // Detail per status
-      statusList.forEach(s => {
-        const sCases = cases.filter(c => c.status === s);
-        if (sCases.length === 0) return;
+      // === Build detail rows per status (one sheet each in Excel, sections in CSV) ===
+      const buildDetailRows = (s, sCases) => {
+        const detailRows = [];
+        const totalLoan = sCases.reduce((sum, c) => sum + (c.loan_amount || 0), 0);
+        detailRows.push([`${STATUS_LABELS[s] || s} (${sCases.length} cases)`, `Total Loan: RM ${totalLoan.toFixed(2)}`]);
+        detailRows.push([]);
+        detailRows.push(['No', 'Customer Name', 'IC', 'Phone', 'CS', 'Leader', 'Branch', 'Package', 'Loan (RM)', 'Date Payslip', 'Date Submitted', 'Date Approved', 'Date Disbursed', 'Remark']);
         
-        rows.push([]);
-        rows.push([`═══ ${(STATUS_LABELS[s] || s).toUpperCase()} (${sCases.length} cases) ═══`]);
-        rows.push(['No', 'Customer Name', 'IC', 'Phone', 'CS', 'Leader', 'Branch', 'Package', 'Loan (RM)', 'Date Payslip', 'Date Submitted', 'Date Approved', 'Date Disbursed', 'Remark']);
-        
-        // Sort by date_payslip newest first
         sCases.sort((a, b) => (b.date_payslip || '').localeCompare(a.date_payslip || ''));
-        
         sCases.forEach((c, i) => {
           const csUser = DB.user(c.source_cs_id);
           const leaderUser = DB.user(c.leader_id);
@@ -8389,7 +8619,7 @@ if (type === 'disbursed') {
           else if (s === 'rejected') remark = c.rejection_reason || '';
           else remark = c.remark_admin || '';
           
-          rows.push([
+          detailRows.push([
             i + 1,
             c.customer_name || '',
             c.ic || '',
@@ -8406,10 +8636,38 @@ if (type === 'disbursed') {
             remark
           ]);
         });
-        
-        // Subtotal for this status
-        const totalLoan = sCases.reduce((sum, c) => sum + (c.loan_amount || 0), 0);
-        rows.push(['', '', '', '', '', '', '', 'SUBTOTAL', totalLoan.toFixed(2)]);
+        detailRows.push(['', '', '', '', '', '', '', 'SUBTOTAL', totalLoan.toFixed(2)]);
+        return detailRows;
+      };
+      
+      // === Excel multi-sheet mode ===
+      if (isExcel) {
+        const sheets = [{ name: '📊 Summary', rows: summaryRows }];
+        statusList.forEach(s => {
+          const sCases = statusBuckets[s];
+          if (sCases && sCases.length > 0) {
+            sheets.push({ 
+              name: (STATUS_LABELS[s] || s).substring(0, 28) + ` (${sCases.length})`, 
+              rows: buildDetailRows(s, sCases) 
+            });
+          }
+        });
+        const xlsxName = filename.replace('.csv', '.xlsx');
+        downloadAsExcel(xlsxName, sheets);
+        toast(`Report downloaded: ${xlsxName} · ${sheets.length} sheets`);
+        return;
+      }
+      
+      // === CSV: single sheet with section markers ===
+      rows = summaryRows.slice();
+      rows.push([]);
+      statusList.forEach(s => {
+        const sCases = statusBuckets[s];
+        if (sCases && sCases.length > 0) {
+          rows.push([]);
+          rows.push([`═══ ${(STATUS_LABELS[s] || s).toUpperCase()} ═══`]);
+          rows.push(...buildDetailRows(s, sCases));
+        }
       });
     }
     
@@ -8421,13 +8679,7 @@ if (type === 'disbursed') {
       if (statusFilter !== 'all') cases = cases.filter(c => c.status === statusFilter);
       if (branchFilter) cases = cases.filter(c => c.branch_id === branchFilter);
       
-      rows.push(['FULL CUSTOMER DATABASE EXPORT', ym]);
-      rows.push(['Generated:', new Date().toLocaleString('en-MY'), 'By:', user.name]);
-      rows.push(['Total records:', cases.length]);
-      rows.push(['⚠ SENSITIVE DATA · Handle with care']);
-      rows.push([]);
-      
-      rows.push([
+      const headers = [
         'No', 'Customer Name', 'IC', 'Phone', 'Majikan',
         'Pendapatan', 'Potongan', 'Gaji Bersih', 'Gaji %',
         'CS Name', 'CS Role', 'Leader Name', 'Branch',
@@ -8439,18 +8691,17 @@ if (type === 'disbursed') {
         'Pending Reason', 'Hold Reason', 'Rejection Reason',
         'Follow-up Date', 'Follow-up Note',
         'Remark Admin', 'Created', 'Duplicate?'
-      ]);
+      ];
       
       // Sort newest first
       cases.sort((a, b) => (b.date_payslip || '').localeCompare(a.date_payslip || ''));
       
-      cases.forEach((c, i) => {
+      const caseToRow = (c, i) => {
         const csUser = DB.user(c.source_cs_id);
         const leaderUser = DB.user(c.leader_id);
         const branch = DB.branch(c.branch_id);
         const pkgObj = LOAN_PACKAGES.find(p => p.id === c.package_id);
-        
-        rows.push([
+        return [
           i + 1,
           c.customer_name || '',
           c.ic || '',
@@ -8486,8 +8737,54 @@ if (type === 'disbursed') {
           c.remark_admin || '',
           c.created_at ? new Date(c.created_at).toLocaleString('en-MY') : '',
           c.is_duplicate ? 'YES' : 'NO'
-        ]);
-      });
+        ];
+      };
+      
+      const isExcel = (this.state.exportFormat || 'xlsx') === 'xlsx';
+      const allBranches = !branchFilter && Permissions.canViewAllBranches(user);
+      
+      // Excel + All Branches = multi-sheet (1 sheet per branch + All combined)
+      if (isExcel && allBranches) {
+        const sheets = [];
+        
+        // Sheet 1: ALL combined
+        const allRows = [];
+        allRows.push(['FULL CUSTOMER DATABASE · ALL BRANCHES', ym]);
+        allRows.push(['Generated:', new Date().toLocaleString('en-MY'), 'By:', user.name]);
+        allRows.push(['Total records:', cases.length]);
+        allRows.push(['⚠ SENSITIVE DATA · Handle with care']);
+        allRows.push([]);
+        allRows.push(headers);
+        cases.forEach((c, i) => allRows.push(caseToRow(c, i)));
+        sheets.push({ name: '📂 All Branches', rows: allRows });
+        
+        // Per-branch sheets
+        const branches = DB.branches().filter(b => b.id !== 'hq');
+        branches.forEach(b => {
+          const bCases = cases.filter(c => c.branch_id === b.id);
+          if (bCases.length === 0) return;
+          const bRows = [];
+          bRows.push([`${b.name} BRANCH · ${bCases.length} records`, ym]);
+          bRows.push([]);
+          bRows.push(headers);
+          bCases.forEach((c, i) => bRows.push(caseToRow(c, i)));
+          sheets.push({ name: b.name.substring(0, 28), rows: bRows });
+        });
+        
+        const xlsxName = filename.replace('.csv', '.xlsx');
+        downloadAsExcel(xlsxName, sheets);
+        toast(`Report downloaded: ${xlsxName} · ${sheets.length} sheets`);
+        return;
+      }
+      
+      // Single-sheet mode (CSV or single branch)
+      rows.push(['FULL CUSTOMER DATABASE EXPORT', ym]);
+      rows.push(['Generated:', new Date().toLocaleString('en-MY'), 'By:', user.name]);
+      rows.push(['Total records:', cases.length]);
+      rows.push(['⚠ SENSITIVE DATA · Handle with care']);
+      rows.push([]);
+      rows.push(headers);
+      cases.forEach((c, i) => rows.push(caseToRow(c, i)));
     }
     
     // ============ REPORT G: PER-KOPERASI PERFORMANCE ============
@@ -8538,12 +8835,18 @@ if (type === 'disbursed') {
         .filter(s => s.submitted > 0)
         .sort((a, b) => b.disbursedAmount - a.disbursedAmount);
       
+      const showProfit = Permissions.canViewProfit(user);
+      
       // === Sheet 1: Summary ===
       const summaryRows = [];
       summaryRows.push(['PER-KOPERASI PERFORMANCE REPORT', ym]);
       summaryRows.push(['Generated:', new Date().toLocaleString('en-MY'), 'By:', user.name]);
       summaryRows.push([]);
-      summaryRows.push(['Rank', 'Koperasi', 'Rate%', 'Tenor', 'Submitted', 'Approved', 'Disbursed', 'Rejected', 'Pending', 'On Hold', 'Approval Rate', 'Disburse Rate', 'Total Submitted (RM)', 'Total Disbursed (RM)', 'Avg Loan (RM)', 'Top Pusher']);
+      const summaryHeaders = ['Rank', 'Koperasi', 'Rate%', 'Tenor', 'Submitted', 'Approved', 'Disbursed', 'Rejected', 'Pending', 'On Hold', 'Approval Rate', 'Disburse Rate', 'Total Submitted (RM)', 'Total Disbursed (RM)', 'Avg Loan (RM)', 'Top Pusher'];
+      if (showProfit) {
+        summaryHeaders.push('Commission %', 'Company Profit (RM)');
+      }
+      summaryRows.push(summaryHeaders);
       sorted.forEach((s, i) => {
         const apvRate = s.submitted > 0 ? (s.approved / s.submitted * 100).toFixed(1) + '%' : '0%';
         const disbRate = s.submitted > 0 ? (s.disbursed / s.submitted * 100).toFixed(1) + '%' : '0%';
@@ -8551,7 +8854,7 @@ if (type === 'disbursed') {
         // Top pusher
         const topPusherEntry = Object.entries(s.topPushers).sort((a, b) => b[1] - a[1])[0];
         const topPusherName = topPusherEntry ? `${DB.user(topPusherEntry[0])?.name || topPusherEntry[0]} (${topPusherEntry[1]})` : '—';
-        summaryRows.push([
+        const row = [
           i + 1,
           s.pkg.name,
           (s.pkg.rate || 0).toFixed(2),
@@ -8568,20 +8871,29 @@ if (type === 'disbursed') {
           s.disbursedAmount.toFixed(2),
           avgLoan,
           topPusherName
-        ]);
+        ];
+        if (showProfit) {
+          const pct = s.pkg.commission_pct || 0;
+          const profit = s.disbursedAmount * pct / 100;
+          row.push(pct.toFixed(2) + '%', profit.toFixed(2));
+        }
+        summaryRows.push(row);
       });
       // Total row
       const total = sorted.reduce((t, s) => ({
         submitted: t.submitted + s.submitted, approved: t.approved + s.approved,
         disbursed: t.disbursed + s.disbursed, rejected: t.rejected + s.rejected,
         submittedAmount: t.submittedAmount + s.submittedAmount,
-        disbursedAmount: t.disbursedAmount + s.disbursedAmount
-      }), { submitted: 0, approved: 0, disbursed: 0, rejected: 0, submittedAmount: 0, disbursedAmount: 0 });
+        disbursedAmount: t.disbursedAmount + s.disbursedAmount,
+        profit: (t.profit || 0) + ((s.pkg.commission_pct || 0) * s.disbursedAmount / 100)
+      }), { submitted: 0, approved: 0, disbursed: 0, rejected: 0, submittedAmount: 0, disbursedAmount: 0, profit: 0 });
       summaryRows.push([]);
-      summaryRows.push(['TOTAL', '', '', '', total.submitted, total.approved, total.disbursed, total.rejected, '', '',
+      const totalRow = ['TOTAL', '', '', '', total.submitted, total.approved, total.disbursed, total.rejected, '', '',
         total.submitted > 0 ? (total.approved / total.submitted * 100).toFixed(1) + '%' : '0%',
         total.submitted > 0 ? (total.disbursed / total.submitted * 100).toFixed(1) + '%' : '0%',
-        total.submittedAmount.toFixed(2), total.disbursedAmount.toFixed(2), '', '']);
+        total.submittedAmount.toFixed(2), total.disbursedAmount.toFixed(2), '', ''];
+      if (showProfit) totalRow.push('', total.profit.toFixed(2));
+      summaryRows.push(totalRow);
       
       // === Sheet 2: Detail per Koperasi (only for Excel format) ===
       const detailRows = [];
@@ -9211,6 +9523,7 @@ removeListItem(key, idx) {
   },
   
   saveSettings() {
+    if (!Permissions.canEditSettings(Auth.current())) { toast('Hanya Boss boleh save settings'); return; }
     try {
       const draft = this.state.settingsDraft;
       // Validate: tier mins must be > 0
@@ -9252,6 +9565,7 @@ removeListItem(key, idx) {
 
   // ============ BRANCH MANAGEMENT ============
   addBranch() {
+    if (!Permissions.canEditSettings(Auth.current())) { toast('Hanya Boss boleh tambah branch'); return; }
     showModal(`
       <div class="modal-title">Add Branch</div>
       <div class="form-group">
@@ -9269,9 +9583,11 @@ removeListItem(key, idx) {
   },
 
   saveBranch() {
+    if (!Permissions.canEditSettings(Auth.current())) { toast('No permission'); return; }
     const name = document.getElementById('br-name').value.trim();
     let id = document.getElementById('br-id').value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
     if (!name || !id) { toast('Name dan ID diperlukan'); return; }
+    if (id === 'hq') { toast('ID "hq" sudah reserved'); return; }
     const branches = DB.branches();
     if (branches.find(b => b.id === id)) { toast('Branch ID sudah wujud'); return; }
     branches.push({ id, name });
@@ -9282,8 +9598,10 @@ removeListItem(key, idx) {
   },
 
   editBranch(branchId) {
+    if (!Permissions.canEditSettings(Auth.current())) { toast('No permission'); return; }
     const b = DB.branch(branchId);
     if (!b) return;
+    if (branchId === 'hq') { toast('HQ branch tidak boleh di-edit'); return; }
     showModal(`
       <div class="modal-title">Edit Branch</div>
       <div class="form-group">
@@ -9296,6 +9614,7 @@ removeListItem(key, idx) {
   },
 
   saveEditBranch(branchId) {
+    if (!Permissions.canEditSettings(Auth.current())) { toast('No permission'); return; }
     const name = document.getElementById('br-edit-name').value.trim();
     if (!name) { toast('Name diperlukan'); return; }
     const branches = DB.branches().map(b => b.id === branchId ? { ...b, name } : b);
@@ -9602,9 +9921,10 @@ removeListItem(key, idx) {
           window.Cloud.deleteDoc('cases', id).catch(console.error);
         }
         
-        // Fire notification to relevant people
+        // Fire notification to relevant people (parallel, fire-and-forget but logged)
         const recipientIds = Logic.getNotifyRecipientsForCase(user.id, c);
-        recipientIds.forEach(uid => DB.addNotification(uid, notifData));
+        Promise.all(recipientIds.map(uid => DB.addNotification(uid, notifData)))
+          .catch(err => Logger.error('Bulk delete notify failed:', err));
         
         success++;
       } catch (e) { 
@@ -9880,18 +10200,18 @@ removeListItem(key, idx) {
 const SCHEMA_VERSION = '10.0';
 
 async function bootstrap() {
-  // Schema migration
+  // Schema migration — use DB.remove to also clear in-memory cache
   const ver = localStorage.getItem('awara_schema_version');
   if (ver !== SCHEMA_VERSION) {
-    localStorage.removeItem(DB.K.users);
-    localStorage.removeItem(DB.K.cases);
-    localStorage.removeItem(DB.K.activities);
-    localStorage.removeItem(DB.K.session);
-    localStorage.removeItem(DB.K.customer_notes);
-    localStorage.removeItem(DB.K.seen);
-    localStorage.removeItem(DB.K.koperasi);
-    localStorage.removeItem(DB.K.announcements);
-    localStorage.removeItem(DB.K.settings);
+    DB.remove(DB.K.users);
+    DB.remove(DB.K.cases);
+    DB.remove(DB.K.activities);
+    DB.remove(DB.K.session);
+    DB.remove(DB.K.customer_notes);
+    DB.remove(DB.K.seen);
+    DB.remove(DB.K.koperasi);
+    DB.remove(DB.K.announcements);
+    DB.remove(DB.K.settings);
     localStorage.setItem('awara_schema_version', SCHEMA_VERSION);
   }
   
