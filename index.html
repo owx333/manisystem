@@ -7253,7 +7253,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
     
     // Max disbursed amount for relative bars
     const maxDisb = Math.max(...stats.map(s => s.disbursedAmount), 1);
-    const showProfit = user.role === 'admin' || user.role === 'hq';
+    const showProfit = user.role === 'admin';
     
     // Month picker (last 6 months)
     const monthOptions = [];
