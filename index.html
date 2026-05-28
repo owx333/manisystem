@@ -1564,8 +1564,10 @@ const DB = {
     const user = Auth.current();
     
     // Check duplicate by IC
-    const existing = data.ic ? this.casesByIC(data.ic) : [];
-    const isDuplicate = existing.length > 0;
+const existing = cases.filter(c => c.ic === ic);
+const currentYM = data.date_payslip?.slice(0, 7) || new Date().toISOString().slice(0, 7);
+const sameMonthCase = existing.find(c => c.date_payslip?.slice(0, 7) === currentYM);
+const isDuplicate = !!sameMonthCase;
     const originalCase = isDuplicate ? existing[0] : null;
     
     const newCase = { 
@@ -1573,8 +1575,8 @@ const DB = {
       ...data,
       branch_id: data.branch_id || this.user(data.source_cs_id)?.branch_id || null,
       is_duplicate: isDuplicate,
-      duplicate_of: isDuplicate ? originalCase.id : null,
-      original_keyer: isDuplicate ? originalCase.source_cs_id : data.source_cs_id,
+original_keyer: isDuplicate ? (sameMonthCase?.source_cs_id || null) : null,
+duplicate_of:   isDuplicate ? (sameMonthCase?.id || null) : null,
       audit_log: [{
         date: new Date().toISOString(),
         by: user?.id || 'system',
