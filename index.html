@@ -1186,7 +1186,7 @@ const Permissions = {
   // Can see COMPANY PROFIT (commission earned from koperasi) — Boss + Manager + HQ
   // Manager included because they have profit-sharing stake with company
   // CS/Leader/Solo/Kerani do NOT see company profit
-  canViewProfit: u => ['admin', 'manager', 'hq'].includes(u?.role)
+  canViewProfit: u => ['admin', 'manager'].includes(u?.role)
 };
 
 // ==================== USERS (14 staff + 1 admin) ====================
@@ -2424,7 +2424,6 @@ const Logic = {
       addCaseLeader();
     } else if (actorRole === 'leader' || actorRole === 'solo') {
       // TL/Solo修改 → Boss + HQ + same-branch manager, kerani
-      addByRole('admin');
       addByRole('hq');
       addByRole('manager', true);
       addByRole('kerani', true);
@@ -10149,9 +10148,10 @@ removeListItem(key, idx) {
     this.render();
   },
   
-  renderFab(currentScreen) {
+    renderFab(currentScreen) {
     const user = Auth.current();
-    if (!user || Permissions.isAdminLevel(user)) return '';
+    // Hide FAB for Boss, HQ, Admin (kerani) — but allow Manager (per branch needs)
+    if (!user || ['admin', 'hq', 'kerani'].includes(user.role)) return '';
     const noFab = ['add-case', 'login'];
     if (noFab.includes(currentScreen)) return '';
     return `<button class="fab" onclick="App.goto('add-case')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>`;
