@@ -3595,7 +3595,7 @@ this.bindCommonEvents();
   // ============ CS CASES LIST ============
   renderCSCases(user) {
     const filterStatus = this.state.filterState.csCases || 'all';
-    const filterTime = this.state.filterState.csCasesTime || 'month';
+    const filterTime = this.state.filterState.csCasesTime || 'all';
     const isLeader = Logic.isLeaderRole(user);
     const searchText = (this.state.searchTextCS || '').toLowerCase();
     const dateFrom = this.state.dateFromCS || '';
