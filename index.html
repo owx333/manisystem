@@ -9028,7 +9028,10 @@ const managerUser = DB.users().find(u => u.role === 'manager' && u.branch_id ===
     
     // ============ REPORT F: FULL CUSTOMER DATABASE ============
     if (type === 'full-customer-list') {
-      let cases = DB.cases().filter(c => filterByDate([c], 'date_payslip').length > 0);
+      // Full Customer DB: show ALL cases by default · only filter if user explicit set Date From/To
+      let cases = (exportFrom || exportTo) 
+        ? DB.cases().filter(c => filterByDate([c], 'date_payslip').length > 0)
+        : DB.cases();
       if (staff !== 'all') cases = cases.filter(c => c.source_cs_id === staff || c.leader_id === staff);
       if (pkg !== 'all') cases = cases.filter(c => c.package_id === pkg);
       if (statusFilter !== 'all') cases = cases.filter(c => c.status === statusFilter);
