@@ -8223,12 +8223,31 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
       ${['admin','hq','manager'].includes(user.role) ? `
       <div style="padding: 0 20px 14px;">
         <div style="font-size: 11px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px;">📥 Import Data</div>
-        <div style="background: var(--cream-2); border: 1px dashed var(--border); border-radius: 12px; padding: 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
-          <div style="font-size: 12px; color: var(--ink-2); line-height: 1.5;">Upload CSV atau Excel (.xlsx) dengan format export system.<br><span style="color: var(--ink-3); font-size: 11px;">CS/Leader tidak dijumpai → assign ke Manager branch.</span></div>
-          <label style="background: var(--primary); color: white; padding: 10px 16px; border-radius: 10px; font-size: 12px; font-weight: 800; cursor: pointer; white-space: nowrap; flex-shrink: 0;">
-            📥 Import CSV/Excel
-            <input type="file" accept=".csv,.xlsx" style="display:none;" onchange="App.handleImportCSV(event)">
-          </label>
+        <div style="background: var(--cream-2); border: 1px dashed var(--border); border-radius: 12px; padding: 14px;">
+          <div style="font-size: 12px; color: var(--ink-2); line-height: 1.5; margin-bottom: 10px;">
+            <strong>Step 1:</strong> Download template → isi data dalam Excel/Sheets → save as CSV<br>
+            <strong>Step 2:</strong> Upload → batched sync (5 cases/batch, 500ms gap)
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button onclick="App.downloadImportTemplate()" style="flex: 1; min-width: 130px; background: white; color: var(--primary); border: 1px solid var(--primary); padding: 10px 16px; border-radius: 10px; font-family: inherit; font-weight: 800; font-size: 12px; cursor: pointer;">
+              ⬇️ Download Template
+            </button>
+            <label style="flex: 1; min-width: 130px; background: var(--primary); color: white; padding: 10px 16px; border-radius: 10px; font-size: 12px; font-weight: 800; cursor: pointer; text-align: center;">
+              📥 Upload CSV/Excel
+              <input type="file" accept=".csv,.xlsx" style="display:none;" onchange="App.handleImportCSV(event)">
+            </label>
+          </div>
+          ${this.state.importProgress ? `
+            <div style="margin-top: 12px; background: white; border-radius: 8px; padding: 10px;">
+              <div style="font-size: 11px; color: var(--ink-3); margin-bottom: 4px;">Importing... please don't close tab</div>
+              <div style="background: var(--cream-2); height: 8px; border-radius: 4px; overflow: hidden;">
+                <div id="import-progress-bar" style="background: var(--primary); height: 100%; width: ${(this.state.importProgress.done / this.state.importProgress.total) * 100}%; transition: width 0.3s;"></div>
+              </div>
+              <div id="import-progress-text" style="font-size: 11px; color: var(--ink-2); margin-top: 4px; font-weight: 700;">
+                ${this.state.importProgress.done} / ${this.state.importProgress.total} (${Math.round((this.state.importProgress.done / this.state.importProgress.total) * 100)}%)
+              </div>
+            </div>
+          ` : ''}
         </div>
       </div>
       ` : ''}
@@ -8370,95 +8389,88 @@ ${(this.state.exportFrom || this.state.exportTo) ? '<div style="font-size: 11px;
     `;
   },
 
-  handleImportCSV(event) {
+async handleImportCSV(event) {
     const file = event.target.files[0];
     if (!file) return;
     const isExcel = file.name.toLowerCase().endsWith('.xlsx');
+    event.target.value = '';
 
-    if (isExcel) {
-      // ── EXCEL (.xlsx) import ──────────────────────────────────────
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellDates: false });
-          const ws = wb.Sheets[wb.SheetNames[0]];
-          // Convert to array-of-arrays so we can find the real header row
-          const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-          // Find the row that contains 'Customer Name' (skip title/info rows at top)
-          let headerRowIdx = raw.findIndex(row =>
-            row.some(cell => String(cell).trim() === 'Customer Name')
-          );
-          if (headerRowIdx === -1) {
-            toast('⚠ Kolum "Customer Name" tidak ditemui dalam Excel');
-            return;
-          }
-          const headers = raw[headerRowIdx].map(h => String(h).trim());
-          const rows = raw.slice(headerRowIdx + 1)
-            .filter(row => row.some(cell => cell !== ''))
-            .map(row => {
-              const obj = {};
-              headers.forEach((h, i) => obj[h] = row[i] !== undefined && row[i] !== null ? String(row[i]).trim() : '');
-              return obj;
-            })
-            .filter(r => r['Customer Name'] && r['Customer Name'] !== 'No');
-          if (rows.length === 0) { toast('Tiada data valid dalam Excel'); return; }
-          const result = this.importCases(rows);
-          toast(`✓ Import selesai · ${result.imported} cases imported · ${result.skipped} skipped`);
-          this.render();
-        } catch(e) {
-          console.error('Excel import error:', e);
-          toast('⚠ Import gagal · semak format Excel');
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    } else {
-      // ── CSV import ────────────────────────────────────────────────
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const text = e.target.result;
-          const lines = text.split(/\r?\n/).filter(l => l.trim());
-          if (lines.length < 2) { toast('CSV kosong atau format salah'); return; }
-          // Find the real header row (contains 'Customer Name')
-          let headerLineIdx = lines.findIndex(l => l.includes('Customer Name'));
-          if (headerLineIdx === -1) headerLineIdx = 0;
-          const headers = lines[headerLineIdx].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-          const rows = lines.slice(headerLineIdx + 1).map(line => {
-            const fields = [];
-            let cur = '', inQ = false;
-            for (let i = 0; i < line.length; i++) {
-              if (line[i] === '"') { inQ = !inQ; }
-              else if (line[i] === ',' && !inQ) { fields.push(cur.trim()); cur = ''; }
-              else { cur += line[i]; }
-            }
-            fields.push(cur.trim());
+    let rows;
+    try {
+      if (isExcel) {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: false });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        const headerRowIdx = raw.findIndex(row => row.some(cell => String(cell).trim() === 'Customer Name'));
+        if (headerRowIdx === -1) { toast('⚠ Kolum "Customer Name" tidak ditemui'); return; }
+        const headers = raw[headerRowIdx].map(h => String(h).trim());
+        rows = raw.slice(headerRowIdx + 1)
+          .filter(row => row.some(cell => cell !== ''))
+          .map(row => {
             const obj = {};
-            headers.forEach((h, i) => obj[h] = fields[i] || '');
+            headers.forEach((h, i) => obj[h] = row[i] !== undefined && row[i] !== null ? String(row[i]).trim() : '');
             return obj;
-          }).filter(r => r['Customer Name']);
-          if (rows.length === 0) { toast('Tiada data valid dalam CSV'); return; }
-          const result = this.importCases(rows);
-          toast(`✓ Import selesai · ${result.imported} cases imported · ${result.skipped} skipped`);
-          this.render();
-        } catch(e) {
-          console.error('Import error:', e);
-          toast('⚠ Import gagal · semak format CSV');
-        }
-      };
+          })
+          .filter(r => r['Customer Name'] && r['Customer Name'] !== 'No' && !r['Customer Name'].startsWith('==='));
+      } else {
+        const text = await file.text();
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) { toast('CSV kosong'); return; }
+        let headerLineIdx = lines.findIndex(l => l.includes('Customer Name'));
+        if (headerLineIdx === -1) headerLineIdx = 0;
+        const parseLine = (line) => {
+          const fields = []; let cur = '', inQ = false;
+          for (let i = 0; i < line.length; i++) {
+            if (line[i] === '"') { if (inQ && line[i+1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+            else if (line[i] === ',' && !inQ) { fields.push(cur.trim()); cur = ''; }
+            else { cur += line[i]; }
+          }
+          fields.push(cur.trim());
+          return fields;
+        };
+        const headers = parseLine(lines[headerLineIdx]).map(h => h.replace(/^"|"$/g, ''));
+        rows = lines.slice(headerLineIdx + 1).map(line => {
+          const fields = parseLine(line);
+          const obj = {};
+          headers.forEach((h, i) => obj[h] = fields[i] || '');
+          return obj;
+        }).filter(r => r['Customer Name'] && !r['Customer Name'].startsWith('==='));
+      }
+      
+      if (!rows || rows.length === 0) { toast('Tiada data valid'); return; }
+      
+      if (!confirm(`Import ${rows.length} customers?\n\n` +
+        `• Cases dengan IC + branch + month sama → flagged duplicate (excluded from KPI)\n` +
+        `• Firestore sync: batched (5 per batch, 500ms delay)\n` +
+        `• Est. time: ~${Math.ceil(rows.length / 5 * 0.5)} seconds\n` +
+        `• DON'T close tab during import`)) return;
+      
+      toast(`Importing ${rows.length} cases · please wait...`);
+      const result = await this.importCases(rows);
+      toast(`✓ Imported ${result.imported} · ${result.skipped} skipped${result.duplicates > 0 ? ` · ${result.duplicates} duplicates` : ''}`);
+      this.render();
+    } catch(e) {
+      console.error('Import error:', e);
+      toast('⚠ Import gagal · ' + e.message);
+      this.state.importProgress = null;
+      this.render();
+    }
+  },
       reader.readAsText(file, 'UTF-8');
     }
     event.target.value = '';
   },
 
-  importCases(rows) {
+ async importCases(rows) {
     const user = Auth.current();
     const allUsers = DB.users();
     const allBranches = DB.branches();
-    const findManager = (branchId) => allUsers.find(u => u.role === 'manager' && u.branch_id === branchId);
+    const findManager = (branchId) => allUsers.find(u => u.role === 'manager' && u.branch_id === branchId && !u.inactive);
     const findUserByName = (name, role) => {
       if (!name) return null;
       const n = name.trim().toLowerCase();
-      return allUsers.find(u => u.name.toLowerCase() === n && (!role || u.role === role));
+      return allUsers.find(u => u.name.toLowerCase() === n && (!role || u.role === role) && !u.inactive);
     };
     const findBranch = (name) => {
       if (!name) return null;
@@ -8470,54 +8482,216 @@ ${(this.state.exportFrom || this.state.exportTo) ? '<div style="font-size: 11px;
       const n = name.trim().toLowerCase();
       return LOAN_PACKAGES.find(p => p.name.toLowerCase() === n || p.id.toLowerCase() === n);
     };
-    const STATUS_MAP = { 'new':'new','submitted':'submitted','approved':'approved','disbursed':'disbursed','rejected':'rejected','pending':'pending','hold':'on_hold','on_hold':'on_hold','duplicate':'duplicate','proposed':'proposed','contacted':'contacted','potential':'potential','on hold':'on_hold','new payslip':'new','new_payslip':'new' };
-    let imported = 0, skipped = 0;
-    rows.forEach(row => {
+    const STATUS_MAP = { 'new':'new','contacted':'contacted','proposed':'proposed','submitted':'submitted','approved':'approved','disbursed':'disbursed','rejected':'rejected','pending':'pending','on_hold':'on_hold','hold':'on_hold','on hold':'on_hold','potential':'potential','duplicate':'new','new payslip':'new','new_payslip':'new' };
+    
+    // STEP 1: Build all new cases in-memory (no DB writes yet)
+    const existingCases = DB.cases();
+    const newCases = [];
+    let skipped = 0;
+    const today = new Date().toISOString().slice(0, 10);
+    
+    rows.forEach((row, idx) => {
       try {
         const custName = row['Customer Name']?.trim();
         if (!custName) { skipped++; return; }
+        
         const branchObj = findBranch(row['Branch']);
         const branchId = branchObj?.id || user.branch_id;
         const csRole = row['CS Role']?.trim().toLowerCase();
         const csRoleMapped = csRole === 'solo' ? 'solo' : csRole === 'leader' ? 'leader' : 'cs';
         let csUser = findUserByName(row['CS Name'], csRoleMapped) || findUserByName(row['CS Name'], null);
-        if (!csUser) csUser = findManager(branchId);
+        if (!csUser) csUser = findManager(branchId) || user;
         let leaderUser = findUserByName(row['Leader Name'], 'leader') || findUserByName(row['Leader Name'], 'solo');
         if (!leaderUser && csUser?.leader_id) leaderUser = DB.user(csUser.leader_id);
-        if (!leaderUser) leaderUser = findManager(branchId);
+        if (!leaderUser) leaderUser = (csUser?.role === 'leader' || csUser?.role === 'solo') ? csUser : (findManager(branchId) || user);
+        
         const pkgObj = findPkg(row['Package']);
-        const n = (v) => parseFloat(v) || null;
-        const d = (v) => v && v.match(/\d{4}-\d{2}-\d{2}/) ? v.trim() : null;
+        const n = (v) => { const x = parseFloat(v); return isFinite(x) && x !== 0 ? x : null; };
+        const d = (v) => v && v.toString().match(/\d{4}-\d{2}-\d{2}/) ? v.toString().trim().slice(0,10) : null;
         const status = STATUS_MAP[row['Status']?.trim().toLowerCase()] || 'new';
-        const caseData = {
-          customer_name: custName, ic: row['IC']?.replace(/[^0-9]/g,'') || '',
-          phone: row['Phone']?.trim() || '', majikan: row['Majikan']?.trim() || null,
-          jumlah_pendapatan: n(row['Pendapatan']), jumlah_potongan: n(row['Potongan']),
-          gaji_bersih: n(row['Gaji Bersih']), gaji_bersih_pct: n(row['Gaji %']),
-          source_cs_id: csUser?.id || null, leader_id: leaderUser?.id || null,
-          branch_id: branchId, status,
-          package_id: pkgObj?.id || null, loan_amount: n(row['Loan Amount']),
-          tenor: n(row['Tenor']), monthly_payment: n(row['Bulanan']),
+        
+        // AUTO-CALC gaji_bersih (CRITICAL: prevent null crashes)
+        const pend = n(row['Pendapatan']) || 0;
+        const pot = n(row['Potongan']) || 0;
+        const bersih = pend - pot;
+        const pct = pend > 0 ? (bersih / pend) * 100 : 0;
+        
+        // Default date_payslip to today (CRITICAL: prevent null sort crashes)
+        const datePayslip = d(row['Date Payslip']) || today;
+        
+        // Duplicate detection (IC + branch + same month)
+        const ic = row['IC']?.replace(/[^0-9]/g, '') || '';
+        const ym = datePayslip.slice(0, 7);
+        const sameMonth = existingCases.find(c => c.ic === ic && c.branch_id === branchId && c.date_payslip?.slice(0, 7) === ym);
+        const isDuplicate = !!sameMonth;
+        
+        const id = 'c' + Date.now() + '_' + idx.toString(36) + Math.random().toString(36).slice(2,5);
+        
+        const newCase = {
+          id,
+          customer_name: custName,
+          ic,
+          phone: row['Phone']?.trim() || '',
+          majikan: row['Majikan']?.trim() || null,
+          jumlah_pendapatan: pend,
+          jumlah_potongan: pot,
+          gaji_bersih: bersih,
+          gaji_bersih_pct: pct,
+          source_cs_id: csUser?.id || null,
+          leader_id: leaderUser?.id || null,
+          branch_id: branchId,
+          status,
+          package_id: pkgObj?.id || null,
+          loan_amount: n(row['Loan Amount']),
+          tenor: n(row['Tenor']),
+          bulanan: n(row['Bulanan']),
+          monthly_payment: n(row['Bulanan']),
           case_type: row['Case Type']?.trim() || null,
-          date_payslip: d(row['Date Payslip']), date_submitted: d(row['Date Submitted']),
-          date_approved: d(row['Date Approved']), date_disbursed: d(row['Date Disbursed']),
-          approved_amount: n(row['Approved Amount']), disburse_amount: n(row['Disbursed Amount']),
-          amm_pass: row['AMM Pass']?.trim() || null, hrmis_pass: row['HRMIS Pass']?.trim() || null,
-          payout_amount: n(row['Payout']), pending_reason: row['Pending Reason']?.trim() || null,
-          hold_reason: row['Hold Reason']?.trim() || null, rejection_reason: row['Rejection Reason']?.trim() || null,
-          followup_date: d(row['Follow-up Date']), followup_note: row['Follow-up Note']?.trim() || null,
-          remark_admin: row['Remark Admin']?.trim() || null,
-          created_at: row['Created'] || new Date().toISOString(), imported: true,
+          date_payslip: datePayslip,
+          date_contacted: null,
+          date_submitted: d(row['Date Submitted']) || (['submitted','approved','disbursed','pending','on_hold'].includes(status) ? datePayslip : null),
+          date_approved: d(row['Date Approved']) || (['approved','disbursed'].includes(status) ? datePayslip : null),
+          date_disbursed: d(row['Date Disbursed']) || (status === 'disbursed' ? datePayslip : null),
+          approved_amount: n(row['Approved Amount']),
+          disburse_amount: n(row['Disbursed Amount']),
+          payout_amount: n(row['Payout']),
+          anm_password: row['AMM Pass']?.trim() || null,
+          hrmis_password: row['HRMIS Pass']?.trim() || null,
+          amm_pass: row['AMM Pass']?.trim() || null,
+          hrmis_pass: row['HRMIS Pass']?.trim() || null,
+          pending_reason: row['Pending Reason']?.trim() || null,
+          hold_reason: row['Hold Reason']?.trim() || null,
+          rejection_reason: row['Rejection Reason']?.trim() || null,
+          follow_up_date: d(row['Follow-up Date']),
+          follow_up_note: row['Follow-up Note']?.trim() || null,
+          followup_date: d(row['Follow-up Date']),
+          followup_note: row['Follow-up Note']?.trim() || null,
+          remark_admin: row['Remark Admin']?.trim() || ('Imported ' + today),
+          remarks: [],
+          is_duplicate: isDuplicate,
+          original_keyer: isDuplicate ? sameMonth.source_cs_id : null,
+          duplicate_of: isDuplicate ? sameMonth.id : null,
+          imported: true,
+          created_at: row['Created'] || new Date().toISOString(),
+          audit_log: [{
+            date: new Date().toISOString(),
+            by: user?.id || 'import',
+            action: isDuplicate ? 'imported_duplicate' : 'imported',
+            changes: { status: { from: null, to: status } }
+          }]
         };
-        const cases = DB.cases();
-        const newCase = { id: 'c' + Date.now() + '_' + Math.random().toString(36).slice(2,6), ...caseData, audit_log: [{ date: new Date().toISOString(), by: user?.id || 'import', action: 'imported', changes: {} }] };
-        cases.unshift(newCase);
-        DB.set(DB.K.cases, cases);
-        if (window.Cloud?.connected) window.Cloud.setDoc('cases', newCase.id, newCase);
-        imported++;
-      } catch(e) { console.error('Row import error:', e, row); skipped++; }
+        newCases.push(newCase);
+      } catch(e) {
+        console.error('Row import error:', e, row);
+        skipped++;
+      }
     });
-    return { imported, skipped };
+    
+    if (newCases.length === 0) return { imported: 0, skipped, duplicates: 0 };
+    
+    // STEP 2: ONE localStorage write (no notification cascade)
+    const allCases = [...newCases, ...existingCases];
+    DB.set(DB.K.cases, allCases);
+    console.log(`✓ ${newCases.length} cases written to localStorage`);
+    
+    // STEP 3: Batch sync to Firestore (5 per batch, 500ms delay)
+    if (window.Cloud?.connected) {
+      this.state.importProgress = { total: newCases.length, done: 0 };
+      this.render();
+      
+      const batchSize = 5;
+      const delayMs = 500;
+      
+      for (let i = 0; i < newCases.length; i += batchSize) {
+        const batch = newCases.slice(i, i + batchSize);
+        await Promise.all(batch.map(c => 
+          window.Cloud.setDoc('cases', c.id, c).catch(e => 
+            console.warn('Firestore sync failed for', c.id, '— retry later:', e.message)
+          )
+        ));
+        
+        this.state.importProgress.done = Math.min(i + batchSize, newCases.length);
+        const bar = document.getElementById('import-progress-bar');
+        const txt = document.getElementById('import-progress-text');
+        if (bar) {
+          const pct = (this.state.importProgress.done / this.state.importProgress.total) * 100;
+          bar.style.width = pct + '%';
+          if (txt) txt.textContent = `${this.state.importProgress.done} / ${this.state.importProgress.total} (${Math.round(pct)}%)`;
+        }
+        
+        if (i + batchSize < newCases.length) {
+          await new Promise(r => setTimeout(r, delayMs));
+        }
+      }
+      
+      this.state.importProgress = null;
+    }
+    
+    const duplicates = newCases.filter(c => c.is_duplicate).length;
+    return { imported: newCases.length, skipped, duplicates };
+  },
+
+  downloadImportTemplate() {
+    const user = Auth.current();
+    
+    const headers = [
+      'Customer Name', 'IC', 'Phone', 'Branch', 'CS Name', 'CS Role', 'Leader Name',
+      'Pendapatan', 'Potongan', 'Majikan', 'Date Payslip',
+      'Status', 'Package', 'Loan Amount', 'Tenor', 'Bulanan', 'Case Type',
+      'Date Submitted', 'Date Approved', 'Date Disbursed',
+      'Approved Amount', 'Disbursed Amount', 'Payout',
+      'AMM Pass', 'HRMIS Pass',
+      'Pending Reason', 'Hold Reason', 'Rejection Reason',
+      'Follow-up Date', 'Follow-up Note', 'Remark Admin'
+    ];
+    
+    const today = new Date().toISOString().slice(0, 10);
+    const example = [
+      'Ahmad bin Ali', '880515085678', '0123456789', user.branch_id || '',
+      '', '', '',
+      '3500', '800', 'Syarikat ABC Sdn Bhd', today,
+      'new', '', '', '', '', '',
+      '', '', '',
+      '', '', '',
+      '', '',
+      '', '', '',
+      '', '', 'Imported example — delete this row before upload'
+    ];
+    
+    const csvEscape = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const csvLines = [
+      headers.map(csvEscape).join(','),
+      example.map(csvEscape).join(',')
+    ];
+    
+    csvLines.push('');
+    csvLines.push('"=== INSTRUCTIONS — DELETE THESE ROWS BEFORE UPLOAD ==="');
+    csvLines.push('"REQUIRED: Customer Name + IC + Pendapatan"');
+    csvLines.push('"IC: 12 digits no dashes (e.g. 880515085678)"');
+    csvLines.push('"Date format: YYYY-MM-DD"');
+    csvLines.push('"Status: new / contacted / proposed / submitted / approved / disbursed / pending / on_hold / potential / rejected"');
+    csvLines.push('"Gaji Bersih + Peratus AUTO-CALCULATED from Pendapatan - Potongan (don\'t need to fill)"');
+    csvLines.push('"Date Payslip blank → defaults to today"');
+    csvLines.push('"CS Name blank → assigned to importer (you)"');
+    csvLines.push('');
+    csvLines.push('"=== VALID CS / LEADER NAMES (copy exactly) ==="');
+    const staff = DB.users().filter(u => !u.inactive && ['cs','solo','leader','manager'].includes(u.role));
+    staff.forEach(s => csvLines.push(`"${s.name} (${s.role}${s.branch_id ? ' · ' + s.branch_id : ''})"`));
+    csvLines.push('');
+    csvLines.push('"=== VALID PACKAGES ==="');
+    LOAN_PACKAGES.forEach(p => csvLines.push(`"${p.name} (id: ${p.id})"`));
+    csvLines.push('');
+    csvLines.push('"=== VALID BRANCHES ==="');
+    DB.branches().forEach(b => csvLines.push(`"${b.name} (id: ${b.id})"`));
+    
+    const blob = new Blob(['\ufeff' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'AWARA_Import_Template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('✓ Template downloaded · isi data, save as CSV, upload balik');
   },
   
   exportReport(type) {
