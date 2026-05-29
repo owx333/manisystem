@@ -6031,9 +6031,12 @@ ${isAdminLike ? `
     const user = Auth.current();
     const name = document.getElementById('f-name').value.trim();
     if (!name) { toast('Nama customer required'); return; }
-    const ic = document.getElementById('f-ic').value.trim();
+const ic = document.getElementById('f-ic').value.replace(/[^0-9]/g, '');
     if (!ic) { toast('IC required'); return; }
-    const phone = document.getElementById('f-phone').value.trim();
+    if (ic.length !== 12) { toast('IC mesti 12 digit nombor'); return; }
+    const phone = document.getElementById('f-phone').value.replace(/[^0-9]/g, '');
+    if (!phone) { toast('Phone number required'); return; }
+    if (phone.length < 9) { toast('Phone number tak cukup digit (min 9)'); return; }
     const pend = parseFloat(document.getElementById('f-pendapatan').value) || 0;
     const pot = parseFloat(document.getElementById('f-potongan').value) || 0;
     if (pend <= 0) { toast('Pendapatan required'); return; }
@@ -6706,7 +6709,11 @@ saveEditCustomer(caseId) {
     const name = document.getElementById('ec-name').value.trim();
     if (!name) { toast('Name required'); return; }
     const ic = document.getElementById('ec-ic').value.replace(/[^0-9]/g, '');
-    const phone = document.getElementById('ec-phone').value.trim();
+    if (!ic) { toast('IC required'); return; }
+    if (ic.length !== 12) { toast('IC mesti 12 digit nombor'); return; }
+    const phone = document.getElementById('ec-phone').value.replace(/[^0-9]/g, '');
+    if (!phone) { toast('Phone number required'); return; }
+    if (phone.length < 9) { toast('Phone number tak cukup digit (min 9)'); return; }
     const pend = parseFloat(document.getElementById('ec-pend').value) || 0;
     const pot = parseFloat(document.getElementById('ec-pot').value) || 0;
     const date = document.getElementById('ec-date').value;
@@ -7765,11 +7772,8 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
     return `
       <nav class="bottom-nav">
         ${items.map(it => {
-          // Compute notification badge for specific tabs
+// Notification badge moved to top-right bell only (less confusing)
           let badge = 0;
-          if (it.screen === 'leader-dashboard' || it.screen === 'admin-dashboard' || it.screen === 'cs-dashboard') {
-            badge = Logic.notificationCount(user);
-          }
           return `
           <button class="nav-item ${it.screen === currentScreen ? 'active' : ''} ${it.action === 'logout' ? 'logout' : ''}" 
                   onclick="${it.action === 'logout' ? 'App.logout()' : (it.action === 'openAdminTools' ? 'App.openAdminTools()' : `App.goto('${it.screen}')`)}" 
