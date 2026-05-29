@@ -3418,7 +3418,7 @@ this.bindCommonEvents();
   renderCSDashboard(user) {
     const stats = Logic.csStats(user.id);
     const activity = DB.todayActivity(user.id);
-    const recentCases = stats.cases.slice().sort((a,b) => b.date_payslip.localeCompare(a.date_payslip)).slice(0, 5);
+    const recentCases = stats.cases.slice().sort((a,b) => (b.date_payslip || '').localeCompare(a.date_payslip || '')).slice(0, 5);
     const teamLeader = user.role === 'cs' ? DB.user(user.leader_id) : null;
     
     return this.topBar(user) + this.monthPill() + 
@@ -3644,7 +3644,7 @@ if (isLeader && (this.state.tabState.cases || 'mine') === 'team') {
       );
     }
     
-    cases = cases.sort((a,b) => b.date_payslip.localeCompare(a.date_payslip));
+    cases = cases.sort((a,b) => (b.date_payslip || '').localeCompare(a.date_payslip || ''));
     
     const tabs = isLeader ? `
       <div class="tabs">
@@ -4148,7 +4148,7 @@ ${isAdminLike ? `
       <button class="btn-secondary" style="margin-top: 6px;" onclick="App.saveCustomerNote('${ic}')">Save Notes</button>
       
       <div style="font-size: 11px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; margin: 16px 0 8px;">All Cases History (${cases.length})</div>
-      ${cases.sort((a,b) => b.date_payslip.localeCompare(a.date_payslip)).map(c => {
+      ${cases.sort((a,b) => (b.date_payslip || '').localeCompare(a.date_payslip || '')).map(c => {
         const pkg = c.package_id ? LOAN_PACKAGES.find(p => p.id === c.package_id) : null;
         const cs = DB.user(c.source_cs_id);
         const leader = DB.user(c.leader_id);
@@ -4331,7 +4331,7 @@ ${isAdminLike ? `
     }
     // hq sees all
     
-    return cases.sort((a, b) => a.follow_up_date.localeCompare(b.follow_up_date));
+    return cases.sort((a, b) => (a.follow_up_date || '').localeCompare(b.follow_up_date || ''));
   },
   
   openFollowUpsList() {
@@ -6425,7 +6425,7 @@ if (!Permissions.canViewAllBranches(user)) {
     }
     
     // Sort newest first
-    cases = cases.sort((a,b) => b.date_payslip.localeCompare(a.date_payslip));
+    cases = cases.sort((a,b) => (b.date_payslip || '').localeCompare(a.date_payslip || ''));
     
     let leaders = DB.users().filter(u => u.role === 'leader' || u.role === 'solo' || u.role === 'manager');
     if (!Permissions.canViewAllBranches(user)) {
