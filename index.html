@@ -8278,6 +8278,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
         <div class="form-group">
           <label>Month</label>
           <select id="exp-month" onchange="App.state.exportMonth = this.value; App.render();">
+            <option value="all" ${selectedYM === 'all' ? 'selected' : ''}>📅 All Months (all dates)</option>
             ${months.slice(0, 12).map(m => {
               const d = new Date(m + '-01');
               return `<option value="${m}" ${selectedYM === m ? 'selected' : ''}>${d.toLocaleDateString('en-MY', {month: 'long', year: 'numeric'})}</option>`;
@@ -8712,6 +8713,7 @@ let rows = [];
       if (exportFrom && exportTo) return cases.filter(c => c[dateField] && c[dateField] >= exportFrom && c[dateField] <= exportTo);
       if (exportFrom) return cases.filter(c => c[dateField] && c[dateField] >= exportFrom);
       if (exportTo) return cases.filter(c => c[dateField] && c[dateField] <= exportTo);
+      if (ym === 'all') return cases;
       return cases.filter(c => c[dateField] && c[dateField].startsWith(ym));
     };
     
