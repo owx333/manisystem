@@ -6680,7 +6680,7 @@ openEditCustomer(caseId) {
       
 <div class="form-group">
         <label>Date Payslip</label>
-        <input type="date" id="ec-date" value="${c.date_payslip}">
+        <input type="date" id="ec-date" value="${c.date_payslip || ''}">
       </div>
       
       
@@ -8224,10 +8224,10 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
       <div style="padding: 0 20px 14px;">
         <div style="font-size: 11px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px;">📥 Import Data</div>
         <div style="background: var(--cream-2); border: 1px dashed var(--border); border-radius: 12px; padding: 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
-          <div style="font-size: 12px; color: var(--ink-2); line-height: 1.5;">Upload CSV dengan format export system.<br><span style="color: var(--ink-3); font-size: 11px;">CS/Leader tidak dijumpai → assign ke Manager branch.</span></div>
+          <div style="font-size: 12px; color: var(--ink-2); line-height: 1.5;">Upload CSV atau Excel (.xlsx) dengan format export system.<br><span style="color: var(--ink-3); font-size: 11px;">CS/Leader tidak dijumpai → assign ke Manager branch.</span></div>
           <label style="background: var(--primary); color: white; padding: 10px 16px; border-radius: 10px; font-size: 12px; font-weight: 800; cursor: pointer; white-space: nowrap; flex-shrink: 0;">
-            📥 Import CSV
-            <input type="file" accept=".csv" style="display:none;" onchange="App.handleImportCSV(event)">
+            📥 Import CSV/Excel
+            <input type="file" accept=".csv,.xlsx" style="display:none;" onchange="App.handleImportCSV(event)">
           </label>
         </div>
       </div>
@@ -8373,36 +8373,80 @@ ${(this.state.exportFrom || this.state.exportTo) ? '<div style="font-size: 11px;
   handleImportCSV(event) {
     const file = event.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const text = e.target.result;
-        const lines = text.split(/\r?\n/).filter(l => l.trim());
-        if (lines.length < 2) { toast('CSV kosong atau format salah'); return; }
-        const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-        const rows = lines.slice(1).map(line => {
-          const fields = [];
-          let cur = '', inQ = false;
-          for (let i = 0; i < line.length; i++) {
-            if (line[i] === '"') { inQ = !inQ; }
-            else if (line[i] === ',' && !inQ) { fields.push(cur.trim()); cur = ''; }
-            else { cur += line[i]; }
+    const isExcel = file.name.toLowerCase().endsWith('.xlsx');
+
+    if (isExcel) {
+      // ── EXCEL (.xlsx) import ──────────────────────────────────────
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellDates: false });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          // Convert to array-of-arrays so we can find the real header row
+          const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+          // Find the row that contains 'Customer Name' (skip title/info rows at top)
+          let headerRowIdx = raw.findIndex(row =>
+            row.some(cell => String(cell).trim() === 'Customer Name')
+          );
+          if (headerRowIdx === -1) {
+            toast('⚠ Kolum "Customer Name" tidak ditemui dalam Excel');
+            return;
           }
-          fields.push(cur.trim());
-          const obj = {};
-          headers.forEach((h, i) => obj[h] = fields[i] || '');
-          return obj;
-        }).filter(r => r['Customer Name']);
-        if (rows.length === 0) { toast('Tiada data valid dalam CSV'); return; }
-        const result = this.importCases(rows);
-        toast(`✓ Import selesai · ${result.imported} cases imported · ${result.skipped} skipped`);
-        this.render();
-      } catch(e) {
-        console.error('Import error:', e);
-        toast('⚠ Import gagal · semak format CSV');
-      }
-    };
-    reader.readAsText(file, 'UTF-8');
+          const headers = raw[headerRowIdx].map(h => String(h).trim());
+          const rows = raw.slice(headerRowIdx + 1)
+            .filter(row => row.some(cell => cell !== ''))
+            .map(row => {
+              const obj = {};
+              headers.forEach((h, i) => obj[h] = row[i] !== undefined && row[i] !== null ? String(row[i]).trim() : '');
+              return obj;
+            })
+            .filter(r => r['Customer Name'] && r['Customer Name'] !== 'No');
+          if (rows.length === 0) { toast('Tiada data valid dalam Excel'); return; }
+          const result = this.importCases(rows);
+          toast(`✓ Import selesai · ${result.imported} cases imported · ${result.skipped} skipped`);
+          this.render();
+        } catch(e) {
+          console.error('Excel import error:', e);
+          toast('⚠ Import gagal · semak format Excel');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      // ── CSV import ────────────────────────────────────────────────
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const text = e.target.result;
+          const lines = text.split(/\r?\n/).filter(l => l.trim());
+          if (lines.length < 2) { toast('CSV kosong atau format salah'); return; }
+          // Find the real header row (contains 'Customer Name')
+          let headerLineIdx = lines.findIndex(l => l.includes('Customer Name'));
+          if (headerLineIdx === -1) headerLineIdx = 0;
+          const headers = lines[headerLineIdx].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+          const rows = lines.slice(headerLineIdx + 1).map(line => {
+            const fields = [];
+            let cur = '', inQ = false;
+            for (let i = 0; i < line.length; i++) {
+              if (line[i] === '"') { inQ = !inQ; }
+              else if (line[i] === ',' && !inQ) { fields.push(cur.trim()); cur = ''; }
+              else { cur += line[i]; }
+            }
+            fields.push(cur.trim());
+            const obj = {};
+            headers.forEach((h, i) => obj[h] = fields[i] || '');
+            return obj;
+          }).filter(r => r['Customer Name']);
+          if (rows.length === 0) { toast('Tiada data valid dalam CSV'); return; }
+          const result = this.importCases(rows);
+          toast(`✓ Import selesai · ${result.imported} cases imported · ${result.skipped} skipped`);
+          this.render();
+        } catch(e) {
+          console.error('Import error:', e);
+          toast('⚠ Import gagal · semak format CSV');
+        }
+      };
+      reader.readAsText(file, 'UTF-8');
+    }
     event.target.value = '';
   },
 
@@ -8426,7 +8470,7 @@ ${(this.state.exportFrom || this.state.exportTo) ? '<div style="font-size: 11px;
       const n = name.trim().toLowerCase();
       return LOAN_PACKAGES.find(p => p.name.toLowerCase() === n || p.id.toLowerCase() === n);
     };
-    const STATUS_MAP = { 'new':'new','submitted':'submitted','approved':'approved','disbursed':'disbursed','rejected':'rejected','pending':'pending','hold':'hold','duplicate':'duplicate' };
+    const STATUS_MAP = { 'new':'new','submitted':'submitted','approved':'approved','disbursed':'disbursed','rejected':'rejected','pending':'pending','hold':'on_hold','on_hold':'on_hold','duplicate':'duplicate','proposed':'proposed','contacted':'contacted','potential':'potential','on hold':'on_hold','new payslip':'new','new_payslip':'new' };
     let imported = 0, skipped = 0;
     rows.forEach(row => {
       try {
