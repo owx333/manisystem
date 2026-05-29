@@ -8457,10 +8457,6 @@ async handleImportCSV(event) {
       this.render();
     }
   },
-      reader.readAsText(file, 'UTF-8');
-    }
-    event.target.value = '';
-  },
 
  async importCases(rows) {
     const user = Auth.current();
