@@ -1667,7 +1667,30 @@ duplicate_of:   isDuplicate ? (sameMonthCase?.id || null) : null,
       updates.audit_log = audit;
     }
     
-    cases[idx] = { ...before, ...updates };
+cases[idx] = { ...before, ...updates };
+    
+    // RECHECK DUPLICATE — if IC / branch / date_payslip changed, recompute is_duplicate
+    if ('ic' in updates || 'branch_id' in updates || 'date_payslip' in updates) {
+      const c = cases[idx];
+      const ym = c.date_payslip?.slice(0, 7);
+      if (c.ic && c.branch_id && ym) {
+        const otherSameMonth = cases.find(x => 
+          x.id !== c.id && 
+          x.ic === c.ic && 
+          x.branch_id === c.branch_id && 
+          x.date_payslip?.slice(0, 7) === ym
+        );
+        cases[idx].is_duplicate = !!otherSameMonth;
+        if (otherSameMonth) {
+          cases[idx].duplicate_of = otherSameMonth.id;
+          cases[idx].original_keyer = otherSameMonth.source_cs_id;
+        } else {
+          cases[idx].duplicate_of = null;
+          cases[idx].original_keyer = null;
+        }
+      }
+    }
+    
     this.set(this.K.cases, cases);
     if (window.Cloud?.connected) window.Cloud.setDoc('cases', id, cases[idx]);
     
@@ -3921,9 +3944,15 @@ ${isAdminLike ? `
         </div>
       ` : ''}
       
-      ${canProcessStage2 && stage2Done && c.status !== 'disbursed' && c.status !== 'rejected' ? `
-        <button class="btn-secondary" onclick="App.openProcessCase('${c.id}')">Edit stage 3 Details</button>
-      ` : ''}
+${stage2Done && canProcessStage2 ? (
+        // Admin/Manager/HQ can always edit (even disbursed/rejected)
+        // Others can only edit before disbursed/rejected
+        (Permissions.canEditAllCases(user) || (c.status !== 'disbursed' && c.status !== 'rejected')) ? `
+          <button class="btn-secondary" onclick="App.openProcessCase('${c.id}')">
+            Edit stage 3 Details ${(c.status === 'disbursed' || c.status === 'rejected') ? '⚠' : ''}
+          </button>
+        ` : ''
+      ) : ''}
       
       ${canEditCustomerInfo ? `
         <button class="btn-secondary" style="background: var(--accent); color: var(--primary-dark); border: none; font-weight: 800;" onclick="App.openEditCustomer('${c.id}')">✏️ Edit Customer Info</button>
