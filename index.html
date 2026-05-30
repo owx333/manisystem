@@ -4087,8 +4087,6 @@ ${stage2Done && canProcessStage2 ? (
     this.render();
   },
 
-  saveAdminDetail(caseId) {     ← this line should remain unchanged
-  
   saveAdminDetail(caseId) {
     const updates = {
       date_email:     document.getElementById('ad-date-email').value || null,
@@ -6827,11 +6825,10 @@ saveEditCustomer(caseId) {
     const pend = parseFloat(document.getElementById('ec-pend').value) || 0;
     const pot = parseFloat(document.getElementById('ec-pot').value) || 0;
     const date = document.getElementById('ec-date').value;
-    const payoutEl = document.getElementById('ec-payout');
-    const payout = payoutEl ? (parseFloat(payoutEl.value) || null) : null;
     const { bersih, pct } = calcGajiBersih(pend, pot);
     
-    DB.updateCase(caseId, {
+    // Build update object — only include payout if the field exists in current modal
+    const updates = {
       customer_name: name,
       ic, phone,
       jumlah_pendapatan: pend,
@@ -6839,8 +6836,13 @@ saveEditCustomer(caseId) {
       gaji_bersih: bersih,
       gaji_bersih_pct: pct,
       date_payslip: date,
-      payout_amount: payout,
-    });
+    };
+    const payoutEl = document.getElementById('ec-payout');
+    if (payoutEl) {
+      updates.payout_amount = parseFloat(payoutEl.value) || null;
+    }
+    
+    DB.updateCase(caseId, updates);
     
     toast('Customer info updated');
     hideModal();
