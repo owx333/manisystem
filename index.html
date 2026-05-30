@@ -3785,12 +3785,17 @@ setSearchCS(val) {
     showModal(`
       <div class="modal-title">${c.customer_name} ${c.is_duplicate ? '<span style="background: var(--warning-bg); color: var(--warning); font-size: 10px; padding: 3px 8px; border-radius: 8px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 800; vertical-align: middle;">Duplicate</span>' : ''}</div>
       <div class="modal-sub">IC: ${c.ic || '—'} · ${phoneLink(c.phone, true)}</div>
-      ${c.is_duplicate ? `
+${c.is_duplicate ? `
         <div class="info-banner" style="background: #FFF0E6; border-left-color: #E67E22; color: #8B4513; margin-bottom: 12px;">
           <strong>This is a duplicate.</strong> Customer was first keyed by CS <strong>${DB.user(c.original_keyer)?.name || c.original_keyer}</strong>. This case is recorded but <strong>does not count</strong> toward CS payslip tier.
-          ${c.duplicate_of ? `<br><a onclick="App.viewCase('${c.duplicate_of}')" style="color: var(--accent-deep); font-weight: 700; cursor: pointer; text-decoration: underline;">View Original Case →</a>` : ''}
+          <br><a onclick="App.viewOriginalDuplicate('${c.id}')" style="color: var(--accent-deep); font-weight: 700; cursor: pointer; text-decoration: underline;">View Original Case →</a>
+          ${Permissions.canEditAllCases(user) ? `<br><a onclick="App.unflagDuplicate('${c.id}')" style="color: #16A34A; font-weight: 700; cursor: pointer; text-decoration: underline; font-size: 11px;">↻ Unmark Duplicate (this is the original)</a>` : ''}
         </div>
-      ` : ''}
+      ` : (Permissions.canEditAllCases(user) && c.ic && DB.cases().some(x => x.ic === c.ic && x.id !== c.id && x.branch_id === c.branch_id) ? `
+        <div class="info-banner" style="background: #FEF3C7; border-left-color: #F59E0B; color: #92400E; margin-bottom: 12px; font-size: 12px;">
+          ⚠ Other case(s) dengan IC sama dijumpai. <a onclick="App.flagAsDuplicate('${c.id}')" style="color: #DC2626; font-weight: 700; cursor: pointer; text-decoration: underline;">Mark this as duplicate →</a>
+        </div>
+      ` : '')}
       
       <div style="background: var(--cream-2); border-radius: 12px; padding: 14px; margin: 14px 0; border: 1px solid var(--border-2);">
         <div style="font-size: 10px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px;">Stage 1 · Payslip Info <span class="stage-pill s1">CS: ${csUser?.name || c.source_cs_id}</span></div>
@@ -4012,6 +4017,83 @@ ${stage2Done && canProcessStage2 ? (
     `);
   },
 
+  <button class="submit-btn" onclick="App.saveAdminDetail('${caseId}')">💾 Simpan</button>
+      <button class="btn-secondary" onclick="App.viewCase('${caseId}')">Back</button>
+    `);
+  },
+
+  // ════════════════ DUPLICATE HANDLING (admin tools) ════════════════
+  // Find original case by IC + branch (smarter than relying on duplicate_of)
+  viewOriginalDuplicate(currentCaseId) {
+    const cur = DB.caseById(currentCaseId);
+    if (!cur || !cur.ic) { toast('Cannot find IC'); return; }
+    
+    const matches = DB.cases().filter(c => 
+      c.ic === cur.ic && 
+      c.branch_id === cur.branch_id && 
+      c.id !== currentCaseId
+    );
+    
+    if (matches.length === 0) { 
+      toast('Tiada other case ditemui dengan IC sama. Mungkin original sudah delete.'); 
+      return; 
+    }
+    
+    matches.sort((a, b) => (a.date_payslip || '').localeCompare(b.date_payslip || ''));
+    const original = matches[0];
+    
+    hideModal();
+    setTimeout(() => this.viewCase(original.id), 100);
+  },
+  
+  // Admin: unmark duplicate flag (case is actually the original)
+  unflagDuplicate(caseId) {
+    if (!Permissions.canEditAllCases(Auth.current())) { toast('No permission'); return; }
+    const c = DB.caseById(caseId);
+    if (!c) return;
+    
+    if (!confirm(`Unmark "${c.customer_name}" sebagai duplicate?\n\nCase ini akan dikira sebagai original (counted toward KPI/KFI).`)) return;
+    
+    DB.updateCase(caseId, { 
+      is_duplicate: false, 
+      duplicate_of: null, 
+      original_keyer: null 
+    });
+    
+    hideModal();
+    toast('✓ Duplicate flag dibuang · case sekarang counted in stats');
+    this.render();
+  },
+  
+  // Admin: manually flag a case as duplicate
+  flagAsDuplicate(caseId) {
+    if (!Permissions.canEditAllCases(Auth.current())) { toast('No permission'); return; }
+    const c = DB.caseById(caseId);
+    if (!c) return;
+    
+    const earlier = DB.cases().filter(x => 
+      x.ic === c.ic && 
+      x.branch_id === c.branch_id && 
+      x.id !== caseId
+    ).sort((a, b) => (a.date_payslip || '').localeCompare(b.date_payslip || ''))[0];
+    
+    if (!earlier) { toast('Tiada earlier case dengan IC sama untuk reference'); return; }
+    
+    if (!confirm(`Mark "${c.customer_name}" (${c.date_payslip}) sebagai DUPLICATE?\n\nOriginal akan jadi: ${earlier.date_payslip} (${DB.user(earlier.source_cs_id)?.name || '—'})\n\nCase ini tidak akan dikira dalam KPI/KFI/profit.`)) return;
+    
+    DB.updateCase(caseId, { 
+      is_duplicate: true,
+      duplicate_of: earlier.id,
+      original_keyer: earlier.source_cs_id
+    });
+    
+    hideModal();
+    toast('✓ Case marked as duplicate · excluded dari stats');
+    this.render();
+  },
+
+  saveAdminDetail(caseId) {     ← this line should remain unchanged
+  
   saveAdminDetail(caseId) {
     const updates = {
       date_email:     document.getElementById('ad-date-email').value || null,
