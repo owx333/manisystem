@@ -3435,10 +3435,6 @@ this.bindCommonEvents();
       
       this.render();
 
-      // Force a password change if still on a default/weak password
-      if (result.mustChangePassword) {
-        setTimeout(() => App.openChangePassword(true), 200);
-      }
     } catch (e) {
       console.error('Login error:', e);
       err.textContent = 'Login error: ' + (e.message || 'Unknown') + ' · Sila refresh page';
