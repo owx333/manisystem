@@ -1195,6 +1195,7 @@ const Permissions = {
 // ==================== BRANCHES ====================
 const SEED_BRANCHES = [
   { id: 'hq', name: 'HQ' },
+  { id: 'branch_a', name: 'Cawangan Utama' },
   { id: 'kangkarpulai', name: 'KANGKAR PULAI' },
   { id: 'penang', name: 'Penang' },
 ];
@@ -1723,6 +1724,7 @@ cases[idx] = { ...before, ...updates };
         date_approved: 'Date Approved',
         date_disbursed: 'Date Disbursed',
         approved_amount: 'Approved Amount',
+        disburse_amount: 'Disbursed Amount',
         disbursed_amount: 'Disbursed Amount',
         anm_password: 'ANM Password',
         hrmis_password: 'HRMIS Password',
@@ -1920,7 +1922,7 @@ const recipients = allUsers.filter(u =>
 );
     
     console.log(`📢 Broadcasting "${notifData.title || notifData.type}" to ${recipients.length} users:`, 
-      recipients.map(u => `${u.name}(${u.role})`).join(', '));
+      recipients.map(u => `${esc(u.name)}(${u.role})`).join(', '));
     
     const results = await Promise.all(
       recipients.map(async u => {
@@ -2096,10 +2098,47 @@ const Hash = {
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   },
-  
-  // Returns true if the value looks like a SHA-256 hash (64 hex chars)
-  isHashed(value) {
+
+  // 16-byte random hex salt (per user, so identical passwords get different hashes
+  // and a leaked Firestore can't be cracked with a precomputed rainbow table)
+  makeSalt() {
+    const a = new Uint8Array(16);
+    crypto.getRandomValues(a);
+    return Array.from(a).map(b => b.toString(16).padStart(2, '0')).join('');
+  },
+
+  // Produce a stored credential in the form "salt$hash"
+  async makeSalted(password) {
+    const salt = this.makeSalt();
+    const hash = await this.sha256(salt + ':' + password);
+    return salt + '$' + hash;
+  },
+
+  // New salted format: 32-hex salt + '$' + 64-hex hash
+  isSalted(value) {
+    return typeof value === 'string' && /^[a-f0-9]{32}\$[a-f0-9]{64}$/.test(value);
+  },
+  // Legacy unsalted SHA-256 (64 hex)
+  isLegacyHash(value) {
     return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+  },
+  // True if the value is any non-plaintext stored form
+  isHashed(value) {
+    return this.isSalted(value) || this.isLegacyHash(value);
+  },
+
+  // Verify a typed password against any stored format (plaintext / legacy hash / salted)
+  async verify(password, stored) {
+    if (this.isSalted(stored)) {
+      const sep = stored.indexOf('$');
+      const salt = stored.slice(0, sep);
+      const hash = stored.slice(sep + 1);
+      return (await this.sha256(salt + ':' + password)) === hash;
+    }
+    if (this.isLegacyHash(stored)) {
+      return (await this.sha256(password)) === stored;
+    }
+    return stored === password;  // legacy plaintext
   }
 };
 
@@ -2120,23 +2159,17 @@ const Auth = {
       return { ok: false, locked: true, error: `Akaun dikunci selepas 3 cubaan gagal. Sila hubungi ${manager ? manager.name : 'Manager'} untuk buka semula.` };
     }
     
-    // Password verification: support both legacy plaintext + new hashed
-    let passwordMatches = false;
+    // Password verification — supports plaintext, legacy unsalted hash, and salted "salt$hash".
     const stored = user.password;
-    
-    if (Hash.isHashed(stored)) {
-      // New format: SHA-256 hash. Compare hashes.
-      const inputHash = await Hash.sha256(password);
-      passwordMatches = (inputHash === stored);
-    } else {
-      // Legacy plaintext: compare directly, then auto-upgrade if matched
-      passwordMatches = (stored === password);
-      if (passwordMatches) {
-        // Migrate to hashed format silently
-        const newHash = await Hash.sha256(password);
-        DB.updateUser(user.id, { password: newHash });
-        console.log(`🔒 Password auto-migrated to hashed for user: ${user.name}`);
-      }
+    const passwordMatches = await Hash.verify(password, stored);
+
+    // On any successful login with a non-salted stored password, upgrade to salted format.
+    if (passwordMatches && !Hash.isSalted(stored)) {
+      try {
+        const salted = await Hash.makeSalted(password);
+        DB.updateUser(user.id, { password: salted });
+        console.log(`🔒 Password upgraded to salted hash for: ${user.name}`);
+      } catch (e) { console.warn('Password upgrade failed:', e); }
     }
     
     if (!passwordMatches) {
@@ -2152,9 +2185,25 @@ const Auth = {
     // Success - reset attempts
     DB.resetLoginAttempts(user.id);
     DB.setSession(user.id);
-    return { ok: true, user };
+    // Flag default/weak passwords so the app can force a change on entry
+    const weak = (password === '1234' || password.length < 6);
+    if (weak && !user.must_change_pw) DB.updateUser(user.id, { must_change_pw: true });
+    return { ok: true, user, mustChangePassword: weak || !!user.must_change_pw };
   },
   logout() { DB.clearSession(); },
+
+  // Change a user's password (validates strength, stores salted)
+  async changePassword(userId, newPassword) {
+    if (!newPassword || newPassword.length < 6) {
+      return { ok: false, error: 'Password baru mesti sekurang-kurangnya 6 aksara' };
+    }
+    if (newPassword === '1234') {
+      return { ok: false, error: 'Password terlalu mudah · sila pilih yang lain' };
+    }
+    const salted = await Hash.makeSalted(newPassword);
+    DB.updateUser(userId, { password: salted, must_change_pw: false });
+    return { ok: true };
+  },
   current() {
     const s = DB.session();
     return s ? DB.user(s.userId) : null;
@@ -2707,7 +2756,7 @@ const Logic = {
     // Submit lump-sum bonus (item 4) - SOLO ONLY (TL doesn't earn this)
     // Count cases submitted this month, excluding rejected (item 4: 当月reject的话就不算kpi)
     const submitCases = this.monthlySubmitCases({ leaderId, ym });
-    const validKpi = submitCases.filter(c => !c.is_duplicate && c.status !== 'rejected').length;
+    const validKpi = submitCases.filter(c => !c.is_duplicate && c.status !== 'rejected' && c.status !== 'on_hold').length;
     let submitLump = 0, submitTier = null;
     const submitTiers = stats.isSolo ? SOLO_SUBMIT_TIERS : [];  // TL has no submit tiers
     if (stats.isSolo) {
@@ -3229,7 +3278,7 @@ this.bindCommonEvents();
         const u = DB.user(id);
         if (!u) return '';
         const active = cur && cur.id === id ? 'active' : '';
-        return `<button class="${active}" onclick="App.demoSwitch('${id}')">${u.name} · ${u.role}</button>`;
+        return `<button class="${active}" onclick="App.demoSwitch('${id}')">${esc(u.name)} · ${u.role}</button>`;
       }).join('') + 
       `<button onclick="App.resetDemo()" style="background: rgba(245, 197, 24, 0.2); color: var(--accent-light);">↻ Reset</button>` +
       (cur ? `<button onclick="App.logout()">Logout</button>` : '');
@@ -3268,7 +3317,50 @@ this.bindCommonEvents();
     if (this._idleTimer) clearTimeout(this._idleTimer);
     this.render();
   },
-  
+
+  // ============ CHANGE PASSWORD ============
+  // force=true → cannot be dismissed (used when password is default/weak)
+  openChangePassword(force = false) {
+    const user = Auth.current();
+    if (!user) return;
+    showModal(`
+      <div class="modal-title">🔒 Tukar Password</div>
+      <div class="modal-sub">${esc(user.name)} · ${ROLE_LABELS[user.role] || user.role}</div>
+      ${force ? `<div class="info-banner" style="margin:0 0 14px;background:#FEF3C7;color:#92400E;"><strong>Wajib tukar.</strong> Password anda masih default/lemah. Sila tetapkan password baru untuk teruskan.</div>` : ''}
+      <div class="form-group">
+        <label>Password Baru (min 6 aksara)</label>
+        <input type="password" id="cp-new" placeholder="••••••••" autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label>Sahkan Password Baru</label>
+        <input type="password" id="cp-confirm" placeholder="••••••••" autocomplete="new-password">
+      </div>
+      <div id="cp-error" style="display:none;color:var(--danger);font-size:12px;font-weight:700;margin-bottom:10px;"></div>
+      <button class="submit-btn" onclick="App.saveNewPassword(${force})">Simpan Password</button>
+      ${force ? '' : '<button class="btn-secondary" onclick="hideModal()">Batal</button>'}
+    `);
+    // Block tap-outside dismiss when forced
+    if (force) {
+      const m = document.getElementById('modal');
+      if (m) m.onclick = null;
+    }
+  },
+
+  async saveNewPassword(force = false) {
+    const user = Auth.current();
+    if (!user) return;
+    const np = document.getElementById('cp-new').value;
+    const cf = document.getElementById('cp-confirm').value;
+    const errEl = document.getElementById('cp-error');
+    const showErr = (msg) => { errEl.textContent = msg; errEl.style.display = 'block'; };
+    if (np !== cf) return showErr('Password tidak sama');
+    const res = await Auth.changePassword(user.id, np);
+    if (!res.ok) return showErr(res.error);
+    hideModal();
+    toast('✓ Password berjaya ditukar');
+    this.render();
+  },
+
   // ============ LOGIN ============
   renderLogin() {
     const isDev = location.search.includes('dev=1');
@@ -3337,6 +3429,11 @@ this.bindCommonEvents();
       }
       
       this.render();
+
+      // Force a password change if still on a default/weak password
+      if (result.mustChangePassword) {
+        setTimeout(() => App.openChangePassword(true), 200);
+      }
     } catch (e) {
       console.error('Login error:', e);
       err.textContent = 'Login error: ' + (e.message || 'Unknown') + ' · Sila refresh page';
@@ -3421,7 +3518,7 @@ this.bindCommonEvents();
       <div class="case-card" style="border-left: 3px solid var(--accent); background: linear-gradient(160deg, #FFF8E8 0%, var(--cream-2) 100%);">
         <div class="case-card-top">
           <div style="flex: 1;">
-            <div class="case-customer">${c.customer_name}</div>
+            <div class="case-customer">${esc(c.customer_name)}</div>
             <div class="case-package" style="margin-top: 2px;">${phoneLink(c.phone, true)} · IC: ${c.ic || '—'}</div>
             <div style="font-size: 11px; color: var(--ink-2); margin-top: 4px;">
               <strong>Bersih ${fmtRM(c.gaji_bersih)} (${(c.gaji_bersih_pct || 0).toFixed(0)}%)</strong> · CS: ${cs?.name || '—'} · ${dateStr}
@@ -3598,7 +3695,7 @@ this.bindCommonEvents();
       <div class="case-card ${closed ? 'closed' : ''} ${rejected ? 'rejected' : ''}" onclick="App.viewCase('${c.id}')">
         <div class="case-card-top">
           <div>
-            <div class="case-customer">${c.customer_name}</div>
+            <div class="case-customer">${esc(c.customer_name)}</div>
             <div class="case-package">${subtitle}</div>
           </div>
           <span class="case-status ${c.status}">${STATUS_LABELS[c.status]}</span>
@@ -3784,7 +3881,7 @@ setSearchCS(val) {
       `).join('');
     
     showModal(`
-      <div class="modal-title">${c.customer_name} ${c.is_duplicate ? '<span style="background: var(--warning-bg); color: var(--warning); font-size: 10px; padding: 3px 8px; border-radius: 8px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 800; vertical-align: middle;">Duplicate</span>' : ''}</div>
+      <div class="modal-title">${esc(c.customer_name)} ${c.is_duplicate ? '<span style="background: var(--warning-bg); color: var(--warning); font-size: 10px; padding: 3px 8px; border-radius: 8px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 800; vertical-align: middle;">Duplicate</span>' : ''}</div>
       <div class="modal-sub">IC: ${c.ic || '—'} · ${phoneLink(c.phone, true)}</div>
 ${c.is_duplicate ? `
         <div class="info-banner" style="background: #FFF0E6; border-left-color: #E67E22; color: #8B4513; margin-bottom: 12px;">
@@ -3850,8 +3947,8 @@ ${c.is_duplicate ? `
               </div>
             ` : ''}`;
           })() : ''}
-          ${c.status === 'pending' && c.pending_reason ? `<div style="margin-top: 10px; padding: 10px 12px; background: #F0E4FF; color: #6B3FB8; border-radius: 8px; font-size: 12px; font-weight: 600;"><strong>Pending:</strong> ${c.pending_reason}</div>` : ''}
-          ${c.status === 'rejected' && c.rejection_reason ? `<div style="margin-top: 10px; padding: 10px 12px; background: var(--danger-bg); color: var(--danger); border-radius: 8px; font-size: 12px; font-weight: 600;"><strong>Rejected:</strong> ${c.rejection_reason}${c.date_rejected ? ' · ' + new Date(c.date_rejected).toLocaleDateString('en-MY') : ''}</div>` : ''}
+          ${c.status === 'pending' && c.pending_reason ? `<div style="margin-top: 10px; padding: 10px 12px; background: #F0E4FF; color: #6B3FB8; border-radius: 8px; font-size: 12px; font-weight: 600;"><strong>Pending:</strong> ${esc(c.pending_reason)}</div>` : ''}
+          ${c.status === 'rejected' && c.rejection_reason ? `<div style="margin-top: 10px; padding: 10px 12px; background: var(--danger-bg); color: var(--danger); border-radius: 8px; font-size: 12px; font-weight: 600;"><strong>Rejected:</strong> ${esc(c.rejection_reason)}${c.date_rejected ? ' · ' + new Date(c.date_rejected).toLocaleDateString('en-MY') : ''}</div>` : ''}
 ${isAdminLike ? `
             <div style="margin-top: 10px; padding: 10px 12px; background: var(--cream-2); border-radius: 8px; font-size: 11px; color: var(--ink-2); border: 1px dashed var(--border);">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
@@ -3870,11 +3967,11 @@ ${isAdminLike ? `
               </div>
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 12px;">
                 <div><span style="color: var(--ink-3);">Date Email:</span> <strong>${c.date_email ? new Date(c.date_email).toLocaleDateString('en-MY') : '—'}</strong></div>
-                <div><span style="color: var(--ink-3);">Majikan:</span> <strong>${c.majikan || '—'}</strong></div>
+                <div><span style="color: var(--ink-3);">Majikan:</span> <strong>${esc(c.majikan || '—')}</strong></div>
                 <div><span style="color: var(--ink-3);">Date Postage:</span> <strong>${c.date_postage ? new Date(c.date_postage).toLocaleDateString('en-MY') : '—'}</strong></div>
                 <div><span style="color: var(--ink-3);">Postage No:</span> <strong>${c.postage_number || '—'}</strong></div>
                 <div style="grid-column: span 2;"><span style="color: var(--ink-3);">Date Receive:</span> <strong>${c.date_receive ? new Date(c.date_receive).toLocaleDateString('en-MY') : '—'}</strong></div>
-                ${c.remark_admin ? `<div style="grid-column: span 2;"><span style="color: var(--ink-3);">Remark Admin:</span> <strong>${c.remark_admin}</strong></div>` : ''}
+                ${c.remark_admin ? `<div style="grid-column: span 2;"><span style="color: var(--ink-3);">Remark Admin:</span> <strong>${esc(c.remark_admin)}</strong></div>` : ''}
                 ${c.payout_amount ? `<div style="grid-column: span 2;"><span style="color: var(--ink-3);">Payout (RM):</span> <strong>${fmtRM(c.payout_amount)}</strong></div>` : ''}
               </div>
             </div>
@@ -3984,14 +4081,14 @@ ${stage2Done && canProcessStage2 ? (
     if (!c) return;
     showModal(`
       <div class="modal-title">✏️ Edit Admin Detail</div>
-      <div class="modal-sub">${c.customer_name} · ${c.ic || '—'}</div>
+      <div class="modal-sub">${esc(c.customer_name)} · ${c.ic || '—'}</div>
       <div class="form-group">
         <label>Date Email</label>
         <input type="date" id="ad-date-email" value="${c.date_email || ''}">
       </div>
       <div class="form-group">
         <label>Majikan</label>
-        <input type="text" id="ad-majikan" placeholder="Nama majikan..." value="${c.majikan || ''}">
+        <input type="text" id="ad-majikan" placeholder="Nama majikan..." value="${esc(c.majikan || '')}">
       </div>
       <div class="form-group">
         <label>Date Postage</label>
@@ -4007,7 +4104,7 @@ ${stage2Done && canProcessStage2 ? (
       </div>
       <div class="form-group">
         <label>Remark Admin</label>
-        <textarea id="ad-remark-admin" rows="3" placeholder="Catatan admin..." style="width:100%; background: var(--cream-2); border: 1px solid var(--border-2); border-radius: 10px; padding: 10px; font-family: inherit; font-size: 13px; outline: none; resize: vertical;">${c.remark_admin || ''}</textarea>
+        <textarea id="ad-remark-admin" rows="3" placeholder="Catatan admin..." style="width:100%; background: var(--cream-2); border: 1px solid var(--border-2); border-radius: 10px; padding: 10px; font-family: inherit; font-size: 13px; outline: none; resize: vertical;">${esc(c.remark_admin || '')}</textarea>
       </div>
       <div class="form-group">
         <label>💵 Payout (RM)</label>
@@ -4048,7 +4145,7 @@ ${stage2Done && canProcessStage2 ? (
     const c = DB.caseById(caseId);
     if (!c) return;
     
-    if (!confirm(`Unmark "${c.customer_name}" sebagai duplicate?\n\nCase ini akan dikira sebagai original (counted toward KPI/KFI).`)) return;
+    if (!confirm(`Unmark "${esc(c.customer_name)}" sebagai duplicate?\n\nCase ini akan dikira sebagai original (counted toward KPI/KFI).`)) return;
     
     DB.updateCase(caseId, { 
       is_duplicate: false, 
@@ -4075,7 +4172,7 @@ ${stage2Done && canProcessStage2 ? (
     
     if (!earlier) { toast('Tiada earlier case dengan IC sama untuk reference'); return; }
     
-    if (!confirm(`Mark "${c.customer_name}" (${c.date_payslip}) sebagai DUPLICATE?\n\nOriginal akan jadi: ${earlier.date_payslip} (${DB.user(earlier.source_cs_id)?.name || '—'})\n\nCase ini tidak akan dikira dalam KPI/KFI/profit.`)) return;
+    if (!confirm(`Mark "${esc(c.customer_name)}" (${c.date_payslip}) sebagai DUPLICATE?\n\nOriginal akan jadi: ${earlier.date_payslip} (${DB.user(earlier.source_cs_id)?.name || '—'})\n\nCase ini tidak akan dikira dalam KPI/KFI/profit.`)) return;
     
     DB.updateCase(caseId, { 
       is_duplicate: true,
@@ -4107,7 +4204,7 @@ ${stage2Done && canProcessStage2 ? (
     if (!c) return;
     showModal(`
       <div class="modal-title">✏️ Edit passwords</div>
-      <div class="modal-sub">${c.customer_name} · ${c.ic || '—'}</div>
+      <div class="modal-sub">${esc(c.customer_name)} · ${c.ic || '—'}</div>
       <div class="form-group">
         <label>ANM</label>
         <input type="text" id="ec-anm" placeholder="ANM password..." value="${c.anm_password || ''}">
@@ -4138,7 +4235,7 @@ ${stage2Done && canProcessStage2 ? (
     const user = Auth.current();
     if (!Permissions.canDelete(user)) { toast('No permission to delete'); return; }
     
-   const confirmText = `DELETE customer "${c.customer_name}" permanently?\n\nThis cannot be undone.\n\n⚠ Notification akan dihantar kepada HQ, Manager, Admin dan Leader berkaitan.`;
+   const confirmText = `DELETE customer "${esc(c.customer_name)}" permanently?\n\nThis cannot be undone.\n\n⚠ Notification akan dihantar kepada HQ, Manager, Admin dan Leader berkaitan.`;
     if (!confirm(confirmText)) return;
     
     // Capture customer details for notification BEFORE deletion (we lose access after)
@@ -4150,7 +4247,7 @@ ${stage2Done && canProcessStage2 ? (
       severity: 'high',
       icon: '🗑️',
       title: 'Customer Deleted',
-      message: `${user.name} (${ROLE_LABELS[user.role] || user.role}) deleted customer "${c.customer_name}"`,
+      message: `${user.name} (${ROLE_LABELS[user.role] || user.role}) deleted customer "${esc(c.customer_name)}"`,
       actor_id: user.id,
       actor_name: user.name,
       actor_role: user.role,
@@ -4228,7 +4325,7 @@ ${stage2Done && canProcessStage2 ? (
     const disburseCount = cases.filter(c => c.status === 'disbursed').length;
     
     showModal(`
-      <div class="modal-title">${customer.customer_name}</div>
+      <div class="modal-title">${esc(customer.customer_name)}</div>
       <div class="modal-sub">${customer.ic} · ${customer.phone || '—'}</div>
       
       <div style="background: var(--primary); color: var(--cream); border-radius: 14px; padding: 14px; margin: 12px 0;">
@@ -4249,7 +4346,7 @@ ${stage2Done && canProcessStage2 ? (
       </div>
       
       <div style="font-size: 11px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; margin: 14px 0 8px;">Customer Notes (long-term, follows customer)</div>
-      <textarea id="cust-note-${ic.replace(/[^0-9]/g, '')}" rows="3" placeholder="Long-term notes about this customer (anak/isteri/preferences)..." style="width: 100%; background: var(--cream-2); border: 1px solid var(--border-2); border-radius: 10px; padding: 10px; font-family: inherit; font-size: 13px; outline: none; resize: vertical;">${note}</textarea>
+      <textarea id="cust-note-${ic.replace(/[^0-9]/g, '')}" rows="3" placeholder="Long-term notes about this customer (anak/isteri/preferences)..." style="width: 100%; background: var(--cream-2); border: 1px solid var(--border-2); border-radius: 10px; padding: 10px; font-family: inherit; font-size: 13px; outline: none; resize: vertical;">${esc(note)}</textarea>
       <button class="btn-secondary" style="margin-top: 6px;" onclick="App.saveCustomerNote('${ic}')">Save Notes</button>
       
       <div style="font-size: 11px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; margin: 16px 0 8px;">All Cases History (${cases.length})</div>
@@ -4291,7 +4388,7 @@ ${stage2Done && canProcessStage2 ? (
     
     showModal(`
       <div class="modal-title">Audit Log</div>
-      <div class="modal-sub">${c.customer_name} · ${log.length} changes</div>
+      <div class="modal-sub">${esc(c.customer_name)} · ${log.length} changes</div>
       
       ${log.length === 0 ? '<div style="text-align: center; color: var(--ink-3); padding: 20px;">No history yet</div>' :
         log.map(entry => {
@@ -4365,7 +4462,7 @@ ${stage2Done && canProcessStage2 ? (
     
     showModal(`
       <div class="modal-title">📌 Set Follow-Up Reminder</div>
-      <div class="modal-sub">${c.customer_name}</div>
+      <div class="modal-sub">${esc(c.customer_name)}</div>
       
       <div class="form-group">
         <label>Tarikh Follow-Up</label>
@@ -4454,7 +4551,7 @@ ${stage2Done && canProcessStage2 ? (
       return `
         <div style="background:var(--cream-2);border:1px solid var(--border-2);border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer;" onclick="hideModal(); App.viewCase('${c.id}')">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;">
-            <strong style="font-size:13px;color:var(--ink);">${c.customer_name}</strong>
+            <strong style="font-size:13px;color:var(--ink);">${esc(c.customer_name)}</strong>
             <span style="background:${tagColor};color:white;padding:2px 8px;border-radius:8px;font-size:9px;font-weight:800;letter-spacing:0.05em;">${tagText}</span>
           </div>
           <div style="font-size:11px;color:var(--ink-3);line-height:1.5;">
@@ -4485,7 +4582,7 @@ ${stage2Done && canProcessStage2 ? (
     
     showModal(`
       <div class="modal-title">${isEdit ? 'Edit Loan Details' : 'Propose Package'} · stage 3</div>
-      <div class="modal-sub">${c.customer_name} · Gaji Bersih: ${fmtRM(c.gaji_bersih)} (${(c.gaji_bersih_pct || 0).toFixed(0)}%)</div>
+      <div class="modal-sub">${esc(c.customer_name)} · Gaji Bersih: ${fmtRM(c.gaji_bersih)} (${(c.gaji_bersih_pct || 0).toFixed(0)}%)</div>
       
       ${!isEdit && c.status === 'new' ? `
         <div class="info-banner info" style="margin-bottom: 14px;">
@@ -4654,7 +4751,7 @@ ${stage2Done && canProcessStage2 ? (
     const c = DB.caseById(caseId);
     showModal(`
       <div class="modal-title">Mark as Potential 🔥</div>
-      <div class="modal-sub">${c.customer_name}</div>
+      <div class="modal-sub">${esc(c.customer_name)}</div>
       <div class="info-banner info" style="margin-bottom: 12px;">Hot lead — worth pursuing aggressively. Add a note kenapa potensi tinggi.</div>
       <div class="form-group">
         <label>Why is this potential? (followup notes)</label>
@@ -4690,7 +4787,7 @@ ${stage2Done && canProcessStage2 ? (
     const c = DB.caseById(caseId);
     showModal(`
       <div class="modal-title">Put On Hold ⏸️</div>
-      <div class="modal-sub">${c.customer_name}</div>
+      <div class="modal-sub">${esc(c.customer_name)}</div>
       <div class="info-banner info" style="margin-bottom: 12px;">Pause case sementara — boleh resume bila ready.</div>
       <div class="form-group">
         <label>Reason for hold</label>
@@ -4727,7 +4824,7 @@ ${stage2Done && canProcessStage2 ? (
     const today = new Date().toISOString().slice(0,10);
     showModal(`
       <div class="modal-title">Submit to Koperasi</div>
-      <div class="modal-sub">${c.customer_name} · ${pkgName(c.package_id)} · ${fmtRM(c.loan_amount)}</div>
+      <div class="modal-sub">${esc(c.customer_name)} · ${pkgName(c.package_id)} · ${fmtRM(c.loan_amount)}</div>
       
       <div class="info-banner" style="margin: 0 0 14px;">
         <strong>Rekod ANM & HRMIS passwords</strong> yang digunakan untuk submit case ini. Untuk audit trail.
@@ -4775,7 +4872,7 @@ ${stage2Done && canProcessStage2 ? (
     const today = new Date().toISOString().slice(0,10);
     showModal(`
       <div class="modal-title">Mark as Approved</div>
-      <div class="modal-sub">${c.customer_name} · Requested: ${fmtRM(c.loan_amount)}</div>
+      <div class="modal-sub">${esc(c.customer_name)} · Requested: ${fmtRM(c.loan_amount)}</div>
       
       <div class="info-banner info" style="margin: 0 0 14px;">
         <strong>Approved amount kadang berbeza</strong> dari requested. Sila isi amount yang Koperasi luluskan.
@@ -4818,7 +4915,7 @@ ${stage2Done && canProcessStage2 ? (
     const defaultDisburse = (c.approved_amount || c.loan_amount) * ((pkg?.payout || 50) / 100);
     showModal(`
       <div class="modal-title">Mark as Disbursed</div>
-      <div class="modal-sub">${c.customer_name} · ${pkg?.name} (${pkg?.payout || '?'}% payout)</div>
+      <div class="modal-sub">${esc(c.customer_name)} · ${pkg?.name} (${pkg?.payout || '?'}% payout)</div>
       
       <div class="info-banner success" style="margin: 0 0 14px;">
         <strong>KFI counts in disburse month.</strong> Submit bulan ini, disburse bulan depan, KFI tetap dikira pada Leader.
@@ -4862,7 +4959,7 @@ ${stage2Done && canProcessStage2 ? (
     const c = DB.caseById(caseId);
     showModal(`
       <div class="modal-title">Mark as Pending</div>
-      <div class="modal-sub">${c.customer_name}</div>
+      <div class="modal-sub">${esc(c.customer_name)}</div>
       
       <div class="info-banner" style="margin: 0 0 14px;">
         <strong>Pause case sementara.</strong> Sila pilih atau tulis sebab pending.
@@ -4879,7 +4976,7 @@ ${stage2Done && canProcessStage2 ? (
       
       <div class="form-group">
         <label>Reason (sila tulis details) *</label>
-        <textarea id="pd-reason" rows="3" placeholder="Customer minta tunggu sebab..." style="width: 100%; background: var(--cream-2); border: 1px solid var(--border-2); border-radius: 11px; padding: 13px 14px; font-family: inherit; font-size: 14px; outline: none; resize: vertical;">${c.pending_reason || ''}</textarea>
+        <textarea id="pd-reason" rows="3" placeholder="Customer minta tunggu sebab..." style="width: 100%; background: var(--cream-2); border: 1px solid var(--border-2); border-radius: 11px; padding: 13px 14px; font-family: inherit; font-size: 14px; outline: none; resize: vertical;">${esc(c.pending_reason || '')}</textarea>
       </div>
       
       <button class="submit-btn" onclick="App.confirmPending('${caseId}')">Mark as Pending</button>
@@ -4907,7 +5004,7 @@ ${stage2Done && canProcessStage2 ? (
     const today = new Date().toISOString().slice(0,10);
     showModal(`
       <div class="modal-title">Mark as Rejected</div>
-      <div class="modal-sub">${c.customer_name}</div>
+      <div class="modal-sub">${esc(c.customer_name)}</div>
       
       <div class="form-group">
         <label>Reject Reason (quick select)</label>
@@ -4920,7 +5017,7 @@ ${stage2Done && canProcessStage2 ? (
       
       <div class="form-group">
         <label>Reason *</label>
-        <textarea id="rj-reason" rows="3" placeholder="Sebab reject..." style="width: 100%; background: var(--cream-2); border: 1px solid var(--border-2); border-radius: 11px; padding: 13px 14px; font-family: inherit; font-size: 14px; outline: none; resize: vertical;">${c.rejection_reason || ''}</textarea>
+        <textarea id="rj-reason" rows="3" placeholder="Sebab reject..." style="width: 100%; background: var(--cream-2); border: 1px solid var(--border-2); border-radius: 11px; padding: 13px 14px; font-family: inherit; font-size: 14px; outline: none; resize: vertical;">${esc(c.rejection_reason || '')}</textarea>
       </div>
       
       <div class="form-group">
@@ -5140,7 +5237,7 @@ ${stage2Done && canProcessStage2 ? (
                 return `
                   <div style="background:rgba(255,255,255,0.7);border-radius:8px;padding:8px 10px;font-size:11px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;">
-                      <strong style="color:#78350F;">${c.customer_name}</strong>
+                      <strong style="color:#78350F;">${esc(c.customer_name)}</strong>
                       ${isOverdue ? `<span style="background:#DC2626;color:white;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:800;">OVERDUE</span>` : `<span style="background:#D97706;color:white;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:800;">TODAY</span>`}
                     </div>
                     <div style="color:#92400E;font-size:10px;margin-top:2px;">📞 ${phoneLink(c.phone, true)} · CS: ${cs?.name || '—'}${c.follow_up_note ? ` · "${c.follow_up_note.substring(0, 30)}${c.follow_up_note.length > 30 ? '...' : ''}"` : ''}</div>
@@ -5175,7 +5272,7 @@ ${stage2Done && canProcessStage2 ? (
               <div class="case-card ${c.status === 'pending' ? '' : ''}" onclick="App.viewCase('${c.id}')" style="border-left: 3px solid #E67E22;">
                 <div class="case-card-top">
                   <div>
-                    <div class="case-customer">${c.customer_name}</div>
+                    <div class="case-customer">${esc(c.customer_name)}</div>
                     <div class="case-package">${c.package_id ? pkgName(c.package_id) + ' · ' + fmtRM(c.loan_amount) : 'Stage 1 only'}</div>
                   </div>
                   <span class="case-status ${c.status}">${STATUS_LABELS[c.status]}</span>
@@ -5797,12 +5894,12 @@ ${stage2Done && canProcessStage2 ? (
               <div style="font-size:9px;color:var(--ink-3);white-space:nowrap;">${date}</div>
             </div>
             <div style="font-size:12px;color:var(--ink);margin-bottom:6px;line-height:1.4;">
-              <strong>${n.actor_name}</strong> 
+              <strong>${esc(n.actor_name)}</strong> 
               <span style="background:var(--cream-3);padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;text-transform:uppercase;color:var(--ink-2);">${ROLE_LABELS[n.actor_role] || n.actor_role}</span>
               deleted customer:
             </div>
             <div style="background:var(--cream);border-radius:8px;padding:10px;font-size:11px;line-height:1.6;">
-              <div><strong>Name:</strong> ${n.customer_name || '—'}</div>
+              <div><strong>Name:</strong> ${esc(n.customer_name || '—')}</div>
               ${n.customer_ic ? `<div><strong>IC:</strong> ${n.customer_ic}</div>` : ''}
               ${n.customer_phone ? `<div><strong>Phone:</strong> ${n.customer_phone}</div>` : ''}
               ${n.case_status ? `<div><strong>Status:</strong> <span style="text-transform:capitalize;">${n.case_status.replace('_', ' ')}</span></div>` : ''}
@@ -5825,12 +5922,12 @@ ${stage2Done && canProcessStage2 ? (
               <div style="font-size:9px;color:var(--ink-3);white-space:nowrap;">${date}</div>
             </div>
             <div style="font-size:12px;color:var(--ink);margin-bottom:6px;line-height:1.4;">
-              <strong>${n.actor_name}</strong> 
+              <strong>${esc(n.actor_name)}</strong> 
               <span style="background:var(--cream-3);padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;text-transform:uppercase;color:var(--ink-2);">${ROLE_LABELS[n.actor_role] || n.actor_role}</span>
               changed status:
             </div>
             <div style="background:var(--cream);border-radius:8px;padding:10px;font-size:11px;line-height:1.6;">
-              <div><strong>Customer:</strong> ${n.customer_name || '—'}</div>
+              <div><strong>Customer:</strong> ${esc(n.customer_name || '—')}</div>
               <div><strong>${n.old_status ? STATUS_LABELS[n.old_status] || n.old_status : '—'}</strong> → <strong style="color:#1E40AF;">${STATUS_LABELS[n.new_status] || n.new_status}</strong></div>
               ${n.source_cs_name ? `<div><strong>Source CS:</strong> ${n.source_cs_name}</div>` : ''}
               ${n.leader_name ? `<div><strong>Leader:</strong> ${n.leader_name}</div>` : ''}
@@ -5849,12 +5946,12 @@ ${stage2Done && canProcessStage2 ? (
               <div style="font-size:9px;color:var(--ink-3);white-space:nowrap;">${date}</div>
             </div>
             <div style="font-size:12px;color:var(--ink);margin-bottom:6px;line-height:1.4;">
-              <strong>${n.actor_name}</strong> 
+              <strong>${esc(n.actor_name)}</strong> 
               <span style="background:var(--cream-3);padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;text-transform:uppercase;color:var(--ink-2);">${ROLE_LABELS[n.actor_role] || n.actor_role}</span>
               updated:
             </div>
             <div style="background:var(--cream);border-radius:8px;padding:10px;font-size:11px;line-height:1.6;">
-              <div><strong>Customer:</strong> ${n.customer_name || '—'}</div>
+              <div><strong>Customer:</strong> ${esc(n.customer_name || '—')}</div>
               ${n.changes_summary ? `<div><strong>Changed:</strong> ${n.changes_summary}</div>` : ''}
               <div><strong>Status:</strong> <span style="text-transform:capitalize;">${(n.case_status || '').replace('_', ' ')}</span></div>
               ${n.source_cs_name ? `<div><strong>Source CS:</strong> ${n.source_cs_name}</div>` : ''}
@@ -5874,12 +5971,12 @@ ${stage2Done && canProcessStage2 ? (
               <div style="font-size:9px;color:var(--ink-3);white-space:nowrap;">${date}</div>
             </div>
             <div style="font-size:12px;color:var(--ink);margin-bottom:6px;line-height:1.4;">
-              <strong>${n.actor_name}</strong> 
+              <strong>${esc(n.actor_name)}</strong> 
               <span style="background:var(--cream-3);padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;text-transform:uppercase;color:var(--ink-2);">CS</span>
               submitted a new payslip:
             </div>
             <div style="background:var(--cream);border-radius:8px;padding:10px;font-size:11px;line-height:1.6;">
-              <div><strong>Customer:</strong> ${n.customer_name || '—'}${n.is_duplicate ? ' <span style="background:#FEE;color:#C00;padding:1px 6px;border-radius:6px;font-size:9px;">DUPLICATE</span>' : ''}</div>
+              <div><strong>Customer:</strong> ${esc(n.customer_name || '—')}${n.is_duplicate ? ' <span style="background:#FEE;color:#C00;padding:1px 6px;border-radius:6px;font-size:9px;">DUPLICATE</span>' : ''}</div>
               ${n.customer_ic ? `<div><strong>IC:</strong> ${n.customer_ic}</div>` : ''}
               ${n.customer_phone ? `<div><strong>Phone:</strong> ${n.customer_phone}</div>` : ''}
               ${n.branch_name ? `<div><strong>Branch:</strong> ${n.branch_name}</div>` : ''}
@@ -5896,7 +5993,7 @@ ${stage2Done && canProcessStage2 ? (
             <div style="font-size:13px;font-weight:700;color:var(--ink);">${n.icon || '🔔'} ${n.title || 'Notifikasi'}</div>
             <div style="font-size:9px;color:var(--ink-3);white-space:nowrap;">${date}</div>
           </div>
-          ${n.message ? `<div style="font-size:12px;color:var(--ink-2);margin-top:4px;line-height:1.4;">${n.message}</div>` : ''}
+          ${n.message ? `<div style="font-size:12px;color:var(--ink-2);margin-top:4px;line-height:1.4;">${esc(n.message)}</div>` : ''}
           ${n.body ? `<div style="font-size:12px;color:var(--ink-3);margin-top:4px;">${n.body}</div>` : ''}
         </div>
       `;
@@ -6117,12 +6214,12 @@ ${stage2Done && canProcessStage2 ? (
       <div style="background: var(--warning-bg); border: 1px solid var(--warning); border-radius: 12px; padding: 12px 14px;">
         <strong style="color: var(--warning); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 800;">⚠ Duplicate IC Detected</strong>
         <div style="font-size: 13px; color: var(--ink); margin-top: 6px; margin-bottom: 4px;">
-          <strong>${customer.customer_name}</strong> sudah ada ${existing.length} case${existing.length > 1 ? 's' : ''} dalam system.
+          <strong>${esc(customer.customer_name)}</strong> sudah ada ${existing.length} case${existing.length > 1 ? 's' : ''} dalam system.
         </div>
         <div style="font-size: 11px; color: var(--ink-3); margin-bottom: 8px;">
           Original: CS ${originalCS?.name || '—'} (Team ${originalLeader?.name || '—'}) · ${new Date(customer.date_payslip).toLocaleDateString('en-MY')} · Status: ${STATUS_LABELS[customer.status]}
         </div>
-        ${note ? `<div style="font-size: 11px; color: var(--accent-deep); background: var(--cream); padding: 6px 10px; border-radius: 6px; margin-bottom: 8px;"><strong>Customer note:</strong> ${note}</div>` : ''}
+        ${note ? `<div style="font-size: 11px; color: var(--accent-deep); background: var(--cream); padding: 6px 10px; border-radius: 6px; margin-bottom: 8px;"><strong>Customer note:</strong> ${esc(note)}</div>` : ''}
         <div style="font-size: 11px; color: var(--ink-2); background: var(--cream); padding: 8px 10px; border-radius: 8px; margin-bottom: 10px; border: 1px dashed var(--border);">
           <strong>Note:</strong> If you key as duplicate, it's recorded for tracking but <strong>won't count toward your payslip tier</strong>. Original CS gets the count.
         </div>
@@ -6735,7 +6832,7 @@ if (!Permissions.canViewAllBranches(user)) {
             </div>
           ` : ''}
           <div style="flex: 1;">
-            <div class="case-customer">${c.customer_name} ${c.is_duplicate ? '<span style="background: var(--warning-bg); color: var(--warning); font-size: 9px; padding: 2px 6px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 800; vertical-align: middle; margin-left: 4px;">DUP</span>' : ''}</div>
+            <div class="case-customer">${esc(c.customer_name)} ${c.is_duplicate ? '<span style="background: var(--warning-bg); color: var(--warning); font-size: 9px; padding: 2px 6px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 800; vertical-align: middle; margin-left: 4px;">DUP</span>' : ''}</div>
             <div class="case-package" style="margin-top: 2px;">${c.ic || '—'} · ${phoneLink(c.phone, true)}</div>
             <div style="font-size: 11px; color: var(--ink-3); margin-top: 3px;">
               CS: <strong style="color: var(--ink-2);">${cs?.name || '—'}</strong> · T.<strong style="color: var(--ink-2);">${leader?.name || '—'}</strong>${branch ? ` · B.<strong style="color: var(--ink-2);">${branch.name}</strong>` : ''}
@@ -6747,8 +6844,8 @@ if (!Permissions.canViewAllBranches(user)) {
           <span class="badge">${dateStr}</span>
           <span class="badge">Bersih: RM ${fmt(c.gaji_bersih)} (${c.gaji_bersih_pct?.toFixed(0)}%)</span>
           ${pkg ? `<span class="badge">${pkg.name} · RM ${fmt(c.loan_amount)}</span>` : '<span class="badge" style="background: var(--accent); color: var(--primary-dark);">Stage 1 only</span>'}
-          ${c.status === 'pending' && c.pending_reason ? `<span class="badge" style="background: #F0E4FF; color: #6B3FB8;">${c.pending_reason.substring(0, 30)}${c.pending_reason.length > 30 ? '...' : ''}</span>` : ''}
-          ${c.status === 'rejected' && c.rejection_reason ? `<span class="badge no-com">${c.rejection_reason.substring(0, 30)}${c.rejection_reason.length > 30 ? '...' : ''}</span>` : ''}
+          ${c.status === 'pending' && c.pending_reason ? `<span class="badge" style="background: #F0E4FF; color: #6B3FB8;">${esc(c.pending_reason.substring(0, 30))}${c.pending_reason.length > 30 ? '...' : ''}</span>` : ''}
+          ${c.status === 'rejected' && c.rejection_reason ? `<span class="badge no-com">${esc(c.rejection_reason.substring(0, 30))}${c.rejection_reason.length > 30 ? '...' : ''}</span>` : ''}
           ${c.status === 'disbursed' && c.disburse_amount ? `<span class="badge com">RM ${fmtK(c.disburse_amount)} KFI</span>` : ''}
         </div>
       </div>
@@ -6772,17 +6869,17 @@ openEditCustomer(caseId) {
       
       <div class="form-group">
         <label>Customer Name</label>
-        <input type="text" id="ec-name" value="${c.customer_name}">
+        <input type="text" id="ec-name" value="${esc(c.customer_name)}">
       </div>
       
       <div class="form-row">
         <div class="form-group">
           <label>IC Number</label>
-          <input type="text" id="ec-ic" value="${c.ic || ''}" inputmode="numeric" pattern="[0-9]*" maxlength="12" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+          <input type="text" id="ec-ic" value="${esc(c.ic || '')}" inputmode="numeric" pattern="[0-9]*" maxlength="12" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
         </div>
         <div class="form-group">
           <label>Phone</label>
-          <input type="text" id="ec-phone" value="${c.phone || ''}">
+          <input type="text" id="ec-phone" value="${esc(c.phone || '')}">
         </div>
       </div>
       
@@ -6891,7 +6988,7 @@ saveEditCustomer(caseId) {
           <div style="display: flex; align-items: center; gap: 12px;">
             <div class="team-avatar ${u.role === 'cs' ? 'cs' : ''}" style="width: 36px; height: 36px; font-size: 12px;">${initials(u.name)}</div>
             <div style="flex: 1;">
-              <div class="qa-title">${u.name}${u.role === 'solo' ? ' <span class="solo-badge">Solo</span>' : ''}${u.inactive ? ' <span style="background:#FEE2E2;color:#991B1B;font-size:9px;padding:2px 6px;border-radius:6px;font-weight:800;">INACTIVE</span>' : ''}${isLocked ? ' <span style="background:#FEF3C7;color:#92400E;font-size:9px;padding:2px 6px;border-radius:6px;font-weight:800;">🔒 LOCKED</span>' : ''}</div>
+              <div class="qa-title">${esc(u.name)}${u.role === 'solo' ? ' <span class="solo-badge">Solo</span>' : ''}${u.inactive ? ' <span style="background:#FEE2E2;color:#991B1B;font-size:9px;padding:2px 6px;border-radius:6px;font-weight:800;">INACTIVE</span>' : ''}${isLocked ? ' <span style="background:#FEF3C7;color:#92400E;font-size:9px;padding:2px 6px;border-radius:6px;font-weight:800;">🔒 LOCKED</span>' : ''}</div>
               <div class="qa-sub">${ROLE_LABELS[u.role]}${leader ? ` · Team ${leader.name}` : ''}${teamSize > 0 ? ` · ${teamSize} CS` : ''}${branchName ? ` · ${branchName}` : ''}</div>
             </div>
             <div style="color: var(--ink-3); font-size: 18px;">></div>
@@ -6957,11 +7054,11 @@ if (currentUser.role === 'hq' && u.role === 'admin') {
     
     showModal(`
       <div class="modal-title">Edit Staff</div>
-      <div class="modal-sub">${u.name} (Login ID: ${u.id.toUpperCase()})</div>
+      <div class="modal-sub">${esc(u.name)} (Login ID: ${u.id.toUpperCase()})</div>
       
       <div class="form-group">
         <label>Name</label>
-        <input type="text" id="eu-name" value="${u.name}">
+        <input type="text" id="eu-name" value="${esc(u.name)}">
       </div>
 
       <div class="form-group" id="eu-branch-group" ${(u.role === 'hq' || u.role === 'admin') ? 'style="display:none;"' : ''}>
@@ -7144,7 +7241,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
     ]).size;
     
     // Confirm
-    const msg = `Resign ${u.name}?\n\n` +
+    const msg = `Resign ${esc(u.name)}?\n\n` +
       `• ${totalCases} case(s) akan dipindah ke Manager ${manager.name}\n` +
       `   (${csCases} sebagai source CS, ${leaderCases} sebagai leader)\n` +
       `• Staff akan jadi inactive (tak boleh login)\n` +
@@ -7168,7 +7265,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
     });
     
     hideModal();
-    toast(`✅ ${u.name} resigned · ${result.count} cases dipindah ke ${manager.name}`);
+    toast(`✅ ${esc(u.name)} resigned · ${result.count} cases dipindah ke ${manager.name}`);
     this.render();
   },
 
@@ -7880,6 +7977,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
         { icon: 'export', label: 'Export', screen: 'admin-export' },
       ];
     }
+    items.push({ icon: 'lock', label: 'Password', action: 'changePassword' });
     items.push({ icon: 'logout', label: 'Logout', action: 'logout' });
     
     const icons = {
@@ -7893,7 +7991,8 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
       compare: '<path d="M9 3v18M15 3v18M3 9h18M3 15h18"/>',
       tools: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>',
       export: '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
-      logout: '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>'
+      logout: '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>',
+      lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>'
     };
     
     return `
@@ -7903,7 +8002,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
           let badge = 0;
           return `
           <button class="nav-item ${it.screen === currentScreen ? 'active' : ''} ${it.action === 'logout' ? 'logout' : ''}" 
-                  onclick="${it.action === 'logout' ? 'App.logout()' : (it.action === 'openAdminTools' ? 'App.openAdminTools()' : `App.goto('${it.screen}')`)}" 
+                  onclick="${it.action === 'logout' ? 'App.logout()' : (it.action === 'changePassword' ? 'App.openChangePassword(false)' : (it.action === 'openAdminTools' ? 'App.openAdminTools()' : `App.goto('${it.screen}')`))}" 
                   style="position: relative;">
             <span class="icon" style="position: relative;">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icons[it.icon]}</svg>
@@ -7972,8 +8071,8 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
           <strong style="font-size: 10px; color: var(--accent-deep); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 800;">📣 Announcement · ${new Date(latest.date).toLocaleDateString('en-MY', {day:'numeric',month:'short'})}</strong>
           ${anns.length > 1 ? `<span style="font-size: 10px; color: var(--ink-3); font-weight: 600;">+${anns.length - 1} more</span>` : ''}
         </div>
-        <div style="font-family: 'Fraunces', serif; font-size: 16px; font-weight: 600; color: var(--primary); margin-bottom: 4px;">${latest.title}</div>
-        <div style="font-size: 13px; color: var(--ink); line-height: 1.5;">${latest.body}</div>
+        <div style="font-family: 'Fraunces', serif; font-size: 16px; font-weight: 600; color: var(--primary); margin-bottom: 4px;">${esc(latest.title)}</div>
+        <div style="font-size: 13px; color: var(--ink); line-height: 1.5;">${esc(latest.body)}</div>
         <div style="font-size: 10px; color: var(--ink-3); margin-top: 6px; font-weight: 600;">Posted by ${byUser?.name || latest.posted_by}</div>
       </div>
     `;
@@ -8264,8 +8363,8 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
                   <strong style="font-size: 10px; color: var(--accent-deep); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 800;">${new Date(a.date).toLocaleDateString('en-MY', {day:'numeric',month:'short',year:'numeric'})}</strong>
                   ${isExpired ? '<span style="font-size: 10px; color: var(--danger); font-weight: 700; text-transform: uppercase;">Expired</span>' : ''}
                 </div>
-                <div style="font-family: 'Fraunces', serif; font-size: 16px; font-weight: 600; color: var(--primary); margin-bottom: 4px;">${a.title}</div>
-                <div style="font-size: 13px; color: var(--ink); line-height: 1.5; margin-bottom: 8px;">${a.body}</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 16px; font-weight: 600; color: var(--primary); margin-bottom: 4px;">${esc(a.title)}</div>
+                <div style="font-size: 13px; color: var(--ink); line-height: 1.5; margin-bottom: 8px;">${esc(a.body)}</div>
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <span style="font-size: 10px; color: var(--ink-3); font-weight: 600;">By ${u?.name || a.posted_by}${a.expires_at ? ' · Expires ' + new Date(a.expires_at).toLocaleDateString('en-MY') : ''}</span>
                   <button onclick="App.confirmDeleteAnnouncement('${a.id}')" style="background: transparent; color: var(--danger); border: none; padding: 4px 8px; font-family: inherit; font-weight: 700; font-size: 11px; cursor: pointer;">Delete</button>
@@ -8421,7 +8520,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
           <label>Staff (filter)</label>
           <select id="exp-staff" onchange="App.state.exportStaff = this.value; App.render();">
             <option value="all" ${selectedStaff === 'all' ? 'selected' : ''}>All Staff</option>
-            ${allStaff.map(u => `<option value="${u.id}" ${selectedStaff === u.id ? 'selected' : ''}>${u.name} (${ROLE_LABELS[u.role]})</option>`).join('')}
+            ${allStaff.map(u => `<option value="${u.id}" ${selectedStaff === u.id ? 'selected' : ''}>${esc(u.name)} (${ROLE_LABELS[u.role]})</option>`).join('')}
           </select>
         </div>
         
@@ -10255,14 +10354,36 @@ removeListItem(key, idx) {
   confirmBulkStatus() {
     const newStatus = document.getElementById('bulk-status').value;
     if (!newStatus) { toast('Sila pilih status'); return; }
-    
+
+    // 'disbursed' requires a per-case payout amount + disburse date. Doing it in bulk
+    // would create disbursed cases with NO amount → silently missing from KFI / commission / profit.
+    // Force the single-case Disburse flow instead.
+    if (newStatus === 'disbursed') {
+      toast('⚠ Disbursed perlu amount setiap case · guna butang Disburse satu-satu');
+      return;
+    }
+
     const selected = this.state.bulkSelected || [];
     if (!confirm(`Tukar status ${selected.length} cases ke "${STATUS_LABELS[newStatus] || newStatus}"?`)) return;
-    
+
+    const today = new Date().toISOString().slice(0,10);
     let success = 0, fail = 0;
     selected.forEach(id => {
       try {
-        DB.updateCase(id, { status: newStatus });
+        const c = DB.caseById(id);
+        if (!c) { fail++; return; }
+        const updates = { status: newStatus };
+        // Stamp the milestone date that the per-status forms would normally set,
+        // so monthly KPI (date_submitted), KFI/disburse (date_disbursed) and
+        // reject (date_rejected) counters all stay accurate after a bulk change.
+        if (newStatus === 'contacted' && !c.date_contacted) updates.date_contacted = today;
+        if (newStatus === 'proposed'  && !c.date_proposed)  updates.date_proposed  = today;
+        if (newStatus === 'submitted' && !c.date_submitted) updates.date_submitted = today;
+        if (newStatus === 'approved'  && !c.date_approved)  updates.date_approved  = today;
+        if (newStatus === 'rejected'  && !c.date_rejected)  updates.date_rejected  = today;
+        if (newStatus === 'potential' && !c.date_potential) updates.date_potential = today;
+        if (newStatus === 'on_hold'   && !c.date_on_hold)   updates.date_on_hold   = today;
+        DB.updateCase(id, updates);
         success++;
       } catch (e) { fail++; }
     });
@@ -10390,7 +10511,7 @@ removeListItem(key, idx) {
           severity: 'high',
           icon: '🗑️',
           title: 'Customer Deleted (Bulk)',
-          message: `${user.name} bulk-deleted "${c.customer_name}"`,
+          message: `${user.name} bulk-deleted "${esc(c.customer_name)}"`,
           actor_id: user.id,
           actor_name: user.name,
           actor_role: user.role,
@@ -10495,7 +10616,7 @@ removeListItem(key, idx) {
     const maxLast7 = Math.max(...last7.map(a => Math.max(a.calls, a.whatsapp * 10, a.payslip * 50)), 1);
     
     showModal(`
-      <div class="modal-title">📊 ${u.name}'s Activity</div>
+      <div class="modal-title">📊 ${esc(u.name)}'s Activity</div>
       <div class="modal-sub">${ROLE_LABELS[u.role] || u.role} · ${DB.branch(u.branch_id)?.name || u.branch_id}</div>
       
       <!-- TODAY -->
@@ -10710,10 +10831,12 @@ async function bootstrap() {
   
   // Try to load from Firestore first (if Cloud connected)
   if (window.Cloud?.connected) {
+    let cloudAuthed = true;  // assume ok unless ensureAuth tells us otherwise
     try {
       // ⚠ Sign in to shared service account FIRST so Firestore rules let us read
       if (window.Cloud.ensureAuth) {
         const authed = await window.Cloud.ensureAuth();
+        cloudAuthed = authed;
         if (!authed) {
           console.warn('⚠ Shared auth not ready · Firestore reads may fail · falling back to local cache');
           toastIfReady('⚠ Cloud auth failed · using local cache only');
@@ -10782,11 +10905,19 @@ async function bootstrap() {
         // Silent sync - no toast (cloud is just a background detail to users)
         console.log("✓ Synced from cloud · " + cloudCases.length + " cases · " + cloudUsers.length + " users");
       } else {
-        // Empty Firestore → seed locally + upload
-        console.log("Firestore empty. Seeding...");
-        DB.seed();
-        await syncAllToCloud();
-        console.log("✓ Initial data uploaded to cloud");
+        if (cloudAuthed === false) {
+          // Read came back empty AND auth failed → almost certainly a transient/permission
+          // error, NOT a genuinely empty database. Do NOT overwrite the cloud with seed data.
+          console.warn('⚠ Cloud read empty AND auth failed — NOT reseeding (avoid clobbering real cloud data). Using local cache.');
+          if (DB.users().length === 0) DB.seed();  // only seed LOCALLY if we truly have nothing
+          toastIfReady('⚠ Cloud tak dapat dibaca · guna data tempatan · data cloud TIDAK ditimpa');
+        } else {
+          // Auth OK and database genuinely empty → safe first-time seed + upload
+          console.log("Firestore empty. Seeding...");
+          DB.seed();
+          await syncAllToCloud();
+          console.log("✓ Initial data uploaded to cloud");
+        }
       }
       
       // Subscribe to real-time updates - all subscribers now trigger UI refresh
@@ -10795,7 +10926,12 @@ async function bootstrap() {
       function debouncedRender() {
         clearTimeout(_renderTimer);
         _renderTimer = setTimeout(() => {
-          if (App.state.currentScreen !== 'login') App.render();
+          if (App.state.currentScreen === 'login') return;
+          // Don't destroy a full-screen form the user is typing into.
+          // (Modals live in a separate overlay #modal and are unaffected by App.render.)
+          if (App.state.currentScreen === 'add-case') return;   // unsaved payslip entry
+          if (App.state.settingsDirty) return;                  // unsaved settings draft
+          App.render();
         }, 300);
       }
       window.Cloud.subscribe('cases', items => {
@@ -10909,6 +11045,29 @@ async function bootstrap() {
       });
       if (branchChanged) DB.saveBranches(branches);
     }
+
+    // Self-heal: auto-create any branch_id that is referenced by a user or case
+    // but does NOT exist in the branch list. Prevents blank branch names + broken
+    // branch filters/comparison if data ever references an unknown branch.
+    (() => {
+      const branches = DB.branches();
+      const known = new Set(branches.map(b => b.id));
+      const referenced = new Set();
+      DB.users().forEach(u => { if (u.branch_id) referenced.add(u.branch_id); });
+      DB.cases().forEach(c => { if (c.branch_id) referenced.add(c.branch_id); });
+      let added = false;
+      referenced.forEach(id => {
+        if (!known.has(id)) {
+          // Pretty default name from the id (e.g. "branch_a" -> "Branch A")
+          const name = String(id).replace(/[_-]+/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+          branches.push({ id, name });
+          known.add(id);
+          added = true;
+          console.warn(`🔧 Auto-created missing branch "${id}" (referenced by data)`);
+        }
+      });
+      if (added) DB.saveBranches(branches);
+    })();
 
     // Patch users missing branch_id (existing users before branch feature)
     const defaultBranch = DB.branches().find(b => b.id !== 'hq')?.id || 'branch_a';
