@@ -2193,7 +2193,7 @@ const Auth = {
     // Flag default/weak passwords so the app can force a change on entry
     const weak = (password === '1234' || password.length < 6);
     if (weak && !user.must_change_pw) DB.updateUser(user.id, { must_change_pw: true });
-    return { ok: true, user, mustChangePassword: weak || !!user.must_change_pw };
+    return { ok: true, user };
   },
   logout() { DB.clearSession(); },
 
