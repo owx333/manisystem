@@ -232,6 +232,7 @@ window.__firebaseStatus = { stage: 'loading', error: null };
     setTimeout(() => outbox.flush().catch(console.error), 5000);
     
     // ========== Cloud API ==========
+    let _lastReadFailed = false;  // true if the most recent getAll() threw (denied/network)
     window.Cloud = {
       enabled: true,
       connected: false,
@@ -274,13 +275,16 @@ window.__firebaseStatus = { stage: 'loading', error: null };
       },
       async getAll(collectionName) {
         try {
+          _lastReadFailed = false;
           const snap = await fbDb.collection(collectionName).get();
           return snap.docs.map(d => d.data());
         } catch (e) {
           console.error("Cloud.getAll error:", collectionName, e);
+          _lastReadFailed = true;
           return [];
         }
       },
+      lastReadFailed: () => _lastReadFailed,
       async getDoc(collectionName, docId) {
         try {
           const snap = await fbDb.collection(collectionName).doc(String(docId)).get();
@@ -343,6 +347,7 @@ async batchSet(collectionName, items, keyField = 'id') {
       deleteDoc: async () => false,
       getAll: async () => [],
       getDoc: async () => null,
+      lastReadFailed: () => false,
       batchSet: async () => false,
       subscribe: () => {},
       unsubscribeAll: () => {},
@@ -10905,14 +10910,16 @@ async function bootstrap() {
         // Silent sync - no toast (cloud is just a background detail to users)
         console.log("✓ Synced from cloud · " + cloudCases.length + " cases · " + cloudUsers.length + " users");
       } else {
-        if (cloudAuthed === false) {
-          // Read came back empty AND auth failed → almost certainly a transient/permission
-          // error, NOT a genuinely empty database. Do NOT overwrite the cloud with seed data.
-          console.warn('⚠ Cloud read empty AND auth failed — NOT reseeding (avoid clobbering real cloud data). Using local cache.');
+        const readFailed = (window.Cloud.lastReadFailed && window.Cloud.lastReadFailed());
+        if (cloudAuthed === false || readFailed) {
+          // Read came back empty because auth failed OR the read was denied/errored
+          // (e.g. Firestore rules misconfigured). This is NOT a genuinely empty
+          // database — do NOT overwrite the cloud with seed data.
+          console.warn('⚠ Cloud read failed/denied — NOT reseeding (avoid clobbering real cloud data). Using local cache.');
           if (DB.users().length === 0) DB.seed();  // only seed LOCALLY if we truly have nothing
-          toastIfReady('⚠ Cloud tak dapat dibaca · guna data tempatan · data cloud TIDAK ditimpa');
+          toastIfReady('⚠ Cloud tak dapat dibaca · semak Firestore Rules · data cloud TIDAK ditimpa');
         } else {
-          // Auth OK and database genuinely empty → safe first-time seed + upload
+          // Auth OK, read OK, database genuinely empty → safe first-time seed + upload
           console.log("Firestore empty. Seeding...");
           DB.seed();
           await syncAllToCloud();
