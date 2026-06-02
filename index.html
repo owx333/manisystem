@@ -2069,28 +2069,77 @@ const recipients = allUsers.filter(u =>
     return this.notifications(userId).filter(n => !n.read).length;
   },
 
-  // ── Login lockout ──
+  // ── Login lockout (GLOBAL · synced via Firestore so can't bypass by clearing browser) ──
   loginAttempts(userId) { return this.get(this.K.loginAttempts, {})[userId] || { count: 0, lockedAt: null }; },
+  
   recordLoginFail(userId) {
+    const u = this.user(userId);
+    if (!u) return { count: 0, lockedAt: null };
+    
+    // Track count in user record (synced via Firestore - global counter, can't bypass with browser clear)
+    const newCount = (u.failed_logins || 0) + 1;
+    const updates = { failed_logins: newCount };
+    let justLocked = false;
+    
+    if (newCount >= 3) {
+      updates.locked = true;
+      updates.locked_at = Date.now();
+      justLocked = (u.failed_logins || 0) < 3;  // only notify once when crossing threshold
+    }
+    
+    this.updateUser(userId, updates);
+    
+    // Local UI feedback (legacy)
     const all = this.get(this.K.loginAttempts, {});
-    const rec = all[userId] || { count: 0, lockedAt: null };
-    rec.count += 1;
-    if (rec.count >= 3) rec.lockedAt = Date.now();
-    all[userId] = rec;
+    all[userId] = { count: newCount, lockedAt: newCount >= 3 ? Date.now() : null };
     this.set(this.K.loginAttempts, all);
-    return rec;
+    
+    // Notify Manager/HQ/Boss when account just got locked
+    if (justLocked) {
+      const notifyTargets = this.users().filter(x => 
+        !x.inactive && 
+        ['admin', 'manager', 'hq'].includes(x.role) && 
+        x.id !== u.id && 
+        (x.role !== 'manager' || x.branch_id === u.branch_id || u.branch_id === 'hq')
+      );
+      notifyTargets.forEach(target => {
+        this.addNotification(target.id, {
+          type: 'account_locked',
+          title: `🔒 ${u.name} dikunci`,
+          message: `${u.name} (${u.role}) gagal login 3 kali. Sila buka semula akaun dari Staff page kalau perlu.`,
+          actor_name: 'System',
+          case_id: null
+        }).catch(e => console.warn('Lock notif failed:', e));
+      });
+    }
+    
+    return { count: newCount, lockedAt: newCount >= 3 ? Date.now() : null };
   },
+  
   resetLoginAttempts(userId) {
     const all = this.get(this.K.loginAttempts, {});
     delete all[userId];
     this.set(this.K.loginAttempts, all);
+    
+    // Also reset synced count on user record
+    const u = this.user(userId);
+    if (u && (u.failed_logins || 0) > 0) {
+      this.updateUser(userId, { failed_logins: 0 });
+    }
   },
+  
   unlockUser(userId) {
+    // Clear local
     const all = this.get(this.K.loginAttempts, {});
     delete all[userId];
     this.set(this.K.loginAttempts, all);
-    // Also update user's locked flag
-    this.updateUser(userId, { locked: false });
+    
+    // Clear ALL synced lockout fields on user record
+    this.updateUser(userId, { 
+      locked: false, 
+      failed_logins: 0,
+      locked_at: null
+    });
   }
 };
 
@@ -2160,7 +2209,13 @@ const Auth = {
       return { ok: false, error: 'Akaun ini telah dinyahaktifkan. Sila hubungi Manager atau Boss.' };
     }
     
-    // Check if account is locked
+    // GLOBAL lockout check (synced via Firestore — can't bypass by clearing browser data)
+    if (user.locked) {
+      const manager = DB.users().find(u => ['admin', 'manager', 'hq'].includes(u.role) && (u.branch_id === user.branch_id || u.role === 'admin' || u.role === 'hq'));
+      return { ok: false, locked: true, error: `Akaun dikunci selepas 3 cubaan gagal. Sila hubungi ${manager ? manager.name : 'Manager / Boss'} untuk buka semula.` };
+    }
+    
+    // Legacy local lockout check (fallback)
     const attempts = DB.loginAttempts(user.id);
     if (attempts.lockedAt) {
       const manager = DB.users().find(u => ['admin', 'manager', 'hq'].includes(u.role) && u.branch_id === user.branch_id);
@@ -3893,17 +3948,67 @@ setSearchCS(val) {
     showModal(`
       <div class="modal-title">${esc(c.customer_name)} ${c.is_duplicate ? '<span style="background: var(--warning-bg); color: var(--warning); font-size: 10px; padding: 3px 8px; border-radius: 8px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 800; vertical-align: middle;">Duplicate</span>' : ''}</div>
       <div class="modal-sub">IC: ${c.ic || '—'} · ${phoneLink(c.phone, true)}</div>
-${c.is_duplicate ? `
-        <div class="info-banner" style="background: #FFF0E6; border-left-color: #E67E22; color: #8B4513; margin-bottom: 12px;">
-          <strong>This is a duplicate.</strong> Customer was first keyed by CS <strong>${DB.user(c.original_keyer)?.name || c.original_keyer}</strong>. This case is recorded but <strong>does not count</strong> toward CS payslip tier.
-          <br><a onclick="App.viewOriginalDuplicate('${c.id}')" style="color: var(--accent-deep); font-weight: 700; cursor: pointer; text-decoration: underline;">View Original Case →</a>
-          ${Permissions.canEditAllCases(user) ? `<br><a onclick="App.unflagDuplicate('${c.id}')" style="color: #16A34A; font-weight: 700; cursor: pointer; text-decoration: underline; font-size: 11px;">↻ Unmark Duplicate (this is the original)</a>` : ''}
-        </div>
-      ` : (Permissions.canEditAllCases(user) && c.ic && DB.cases().some(x => x.ic === c.ic && x.id !== c.id && x.branch_id === c.branch_id) ? `
+${c.is_duplicate ? (() => {
+        // Determine viewer tier (visibility level)
+        const tier = (user.role === 'admin' || user.role === 'hq') ? 3
+                    : (user.role === 'manager' || user.role === 'kerani') ? 2
+                    : 1;  // cs, leader, solo
+        
+        const originalCs = c.original_keyer ? DB.user(c.original_keyer) : null;
+        const originalCase = c.duplicate_of ? DB.caseById(c.duplicate_of) : null;
+        const originalLeader = originalCase?.leader_id ? DB.user(originalCase.leader_id) : null;
+        const originalBranch = originalCase?.branch_id ? DB.branch(originalCase.branch_id) : null;
+        
+        let body = '';
+        if (tier === 1) {
+          // Minimal: leader name only, no customer detail link
+          body = `<strong>⚠ Duplicate Case.</strong> Original by Leader <strong>${originalLeader?.name || '—'}</strong>'s team. Tidak dikira KPI/KFI.`;
+        } else if (tier === 2) {
+          // Manager: team info + view original link
+          body = `<strong>⚠ Duplicate Case.</strong> Original by CS <strong>${originalCs?.name || '—'}</strong> · Leader <strong>${originalLeader?.name || '—'}</strong>'s team. Tidak dikira KPI/KFI.
+            <br><a onclick="App.viewOriginalDuplicate('${c.id}')" style="color: var(--accent-deep); font-weight: 700; cursor: pointer; text-decoration: underline;">View Original Case →</a>`;
+        } else {
+          // Boss/HQ: full details + branch info
+          body = `<strong>⚠ Duplicate Case.</strong> Original by CS <strong>${originalCs?.name || '—'}</strong> · Leader <strong>${originalLeader?.name || '—'}</strong> · Branch <strong>${originalBranch?.name || '—'}</strong>. Tidak dikira KPI/KFI.
+            <br><a onclick="App.viewOriginalDuplicate('${c.id}')" style="color: var(--accent-deep); font-weight: 700; cursor: pointer; text-decoration: underline;">View Original Case →</a>`;
+        }
+        
+        // Unmark button only for canEditAllCases (admin/manager/hq)
+        if (Permissions.canEditAllCases(user)) {
+          body += `<br><a onclick="App.unflagDuplicate('${c.id}')" style="color: #16A34A; font-weight: 700; cursor: pointer; text-decoration: underline; font-size: 11px;">↻ Unmark Duplicate (this is the original)</a>`;
+        }
+        
+        return `<div class="info-banner" style="background: #FFF0E6; border-left-color: #E67E22; color: #8B4513; margin-bottom: 12px;">${body}</div>`;
+      })() : (Permissions.canEditAllCases(user) && c.ic && DB.cases().some(x => x.ic === c.ic && x.id !== c.id && x.branch_id === c.branch_id) ? `
         <div class="info-banner" style="background: #FEF3C7; border-left-color: #F59E0B; color: #92400E; margin-bottom: 12px; font-size: 12px;">
-          ⚠ Other case(s) dengan IC sama dijumpai. <a onclick="App.flagAsDuplicate('${c.id}')" style="color: #DC2626; font-weight: 700; cursor: pointer; text-decoration: underline;">Mark this as duplicate →</a>
+          ⚠ Other case(s) dengan IC sama dijumpai dalam branch ini. <a onclick="App.flagAsDuplicate('${c.id}')" style="color: #DC2626; font-weight: 700; cursor: pointer; text-decoration: underline;">Mark this as duplicate →</a>
         </div>
       ` : '')}
+      
+      ${/* AUTO Cross-branch detection (Boss/HQ only) — finds same IC in OTHER branches */ ''}
+      ${(user.role === 'admin' || user.role === 'hq') && c.ic ? (() => {
+        const crossBranch = DB.cases().filter(x => 
+          x.ic === c.ic && 
+          x.id !== c.id && 
+          x.branch_id !== c.branch_id
+        );
+        if (crossBranch.length === 0) return '';
+        // Sort by date
+        crossBranch.sort((a, b) => (b.date_payslip || '').localeCompare(a.date_payslip || ''));
+        return `<div class="info-banner" style="background: #FEE2E2; border-left-color: #DC2626; color: #7F1D1D; margin-bottom: 12px;">
+          <strong>🌐 Cross-Branch Alert!</strong> Customer IC ini ada <strong>${crossBranch.length} case</strong> di branch lain:
+          <ul style="margin: 6px 0 0 18px; padding: 0; font-size: 12px;">
+            ${crossBranch.slice(0, 5).map(x => {
+              const xBranch = DB.branch(x.branch_id)?.name || x.branch_id;
+              const xCs = DB.user(x.source_cs_id)?.name || '—';
+              const xLeader = DB.user(x.leader_id)?.name || '—';
+              const xDate = x.date_payslip ? new Date(x.date_payslip).toLocaleDateString('en-MY') : '—';
+              return `<li style="margin-bottom: 3px;"><a onclick="hideModal(); setTimeout(() => App.viewCase('${x.id}'), 100)" style="cursor: pointer; text-decoration: underline; color: #7F1D1D; font-weight: 600;">${xDate} · <strong>${xBranch}</strong> · ${xCs} (Leader ${xLeader}) · ${STATUS_LABELS[x.status] || x.status}${x.disburse_amount ? ` · RM ${fmt(x.disburse_amount)}` : ''}</a></li>`;
+            }).join('')}
+            ${crossBranch.length > 5 ? `<li style="opacity: 0.7;">+ ${crossBranch.length - 5} more...</li>` : ''}
+          </ul>
+        </div>`;
+      })() : ''}
       
       <div style="background: var(--cream-2); border-radius: 12px; padding: 14px; margin: 14px 0; border: 1px solid var(--border-2);">
         <div style="font-size: 10px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px;">Stage 1 · Payslip Info <span class="stage-pill s1">CS: ${csUser?.name || c.source_cs_id}</span></div>
@@ -7007,7 +7112,7 @@ saveEditCustomer(caseId) {
       const leader = u.role === 'cs' ? DB.user(u.leader_id) : null;
       const teamSize = (u.role === 'leader') ? allUsers.filter(x => x.leader_id === u.id).length : 0;
       const branchName = u.branch_id ? (DB.branch(u.branch_id)?.name || u.branch_id) : '';
-      const isLocked = DB.loginAttempts(u.id).lockedAt;
+      const isLocked = u.locked || DB.loginAttempts(u.id).lockedAt;
       return `
         <div class="qa-card" onclick="App.editUser('${u.id}')" style="${u.inactive ? 'opacity:0.5;' : ''}">
           <div style="display: flex; align-items: center; gap: 12px;">
@@ -7128,8 +7233,8 @@ if (currentUser.role === 'hq' && u.role === 'admin') {
       <button class="btn-secondary" style="margin-top: 8px; color: #0891B2; border-color: rgba(8,145,178,0.3);" onclick="App.viewStaffActivity('${userId}')">📊 View Activity & Performance</button>
       ${(() => {
         const attempts = DB.loginAttempts(userId);
-        const isLocked = attempts.lockedAt;
         const u2 = DB.user(userId);
+        const isLocked = u2?.locked || attempts.lockedAt;
         const isSelf = userId === Auth.current()?.id;
         return `
           ${isLocked ? `<button class="btn-secondary" style="color: #059669; border-color: rgba(5,150,105,0.3); margin-top: 8px; width: 100%;" onclick="App.unlockUser('${userId}')">🔓 Buka Semula Akaun (Dikunci)</button>` : ''}
