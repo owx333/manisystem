@@ -497,7 +497,7 @@ body.app-ready #app { opacity: 1; transition: opacity 0.2s; }
 .case-status.potential { background: #FFE9D6; color: #C2620C; }
 .case-status.on_hold { background: #E8E8E8; color: #4A4A4A; }
 .case-status.rejected { background: var(--danger-bg); color: var(--danger); }
-.case-status.tak_layak { background: #FED7AA; color: #9A3412; }
+.case-status.unqualified { background: #FED7AA; color: #9A3412; }
 
 /* Contact buttons */
 .contact-row { display: flex; gap: 8px; margin-top: 8px; }
@@ -1101,20 +1101,20 @@ const STATUS_LABELS = {
   potential: 'Potential',     // hot lead worth chasing
   on_hold: 'On Hold',          // temporarily paused (customer travel, awaiting docs, etc)
   rejected: 'Rejected',
-  tak_layak: 'Tak Layak'       // got payslip but customer not eligible (didn't submit to koperasi)
+  unqualified: 'Unqualified'       // got payslip but customer not eligible (didn't submit to koperasi)
 };
 const STATUS_FLOW = {
-  new:        ['contacted', 'potential', 'on_hold', 'pending', 'tak_layak', 'rejected'],
-  contacted:  ['proposed', 'potential', 'on_hold', 'pending', 'tak_layak', 'rejected'],
-  proposed:   ['submitted', 'potential', 'on_hold', 'pending', 'tak_layak', 'rejected'],
+  new:        ['contacted', 'potential', 'on_hold', 'pending', 'unqualified', 'rejected'],
+  contacted:  ['proposed', 'potential', 'on_hold', 'pending', 'unqualified', 'rejected'],
+  proposed:   ['submitted', 'potential', 'on_hold', 'pending', 'unqualified', 'rejected'],
   submitted:  ['approved', 'on_hold', 'pending', 'rejected'],
   approved:   ['disbursed', 'on_hold', 'pending', 'rejected'],
   disbursed:  [],
-  pending:    ['contacted', 'proposed', 'submitted', 'approved', 'potential', 'on_hold', 'tak_layak', 'rejected'],
-  potential:  ['contacted', 'proposed', 'submitted', 'on_hold', 'tak_layak', 'rejected'],   // can move forward or pause
-  on_hold:    ['contacted', 'proposed', 'submitted', 'approved', 'potential', 'tak_layak', 'rejected'],
+  pending:    ['contacted', 'proposed', 'submitted', 'approved', 'potential', 'on_hold', 'unqualified', 'rejected'],
+  potential:  ['contacted', 'proposed', 'submitted', 'on_hold', 'unqualified', 'rejected'],   // can move forward or pause
+  on_hold:    ['contacted', 'proposed', 'submitted', 'approved', 'potential', 'unqualified', 'rejected'],
   rejected:   ['new'],
-  tak_layak:  ['new']
+  unqualified:  ['new']
 };
 
 function calcBulanan(loanAmount, ratePct, tenorMonths) {
@@ -2626,7 +2626,7 @@ const Logic = {
     // KPI count = cases that were submitted AND still alive (NOT rejected, NOT on_hold) - item 4 requirement
     // Rejected this month doesn't count toward submit/KPI commission
     // On hold also excluded — case is paused, not actively in submission
-    const submitted = submitCases.filter(c => !c.is_duplicate && c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'tak_layak').length;
+    const submitted = submitCases.filter(c => !c.is_duplicate && c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'unqualified').length;
     const disbursed = disburseCases.filter(c => !c.is_duplicate).length;
     const rejected = rejectCases.filter(c => !c.is_duplicate).length;
     const newCount = validPayslip.filter(c => c.status === 'new').length;
@@ -2663,12 +2663,12 @@ const Logic = {
     const validPayslip = payslipCases.filter(c => !c.is_duplicate);
     const total = validPayslip.length;
     // KPI count excludes rejected AND on_hold cases this month
-    const submitted = submitCases.filter(c => !c.is_duplicate && c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'tak_layak').length;
+    const submitted = submitCases.filter(c => !c.is_duplicate && c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'unqualified').length;
     const disbursed = disburseCases.filter(c => !c.is_duplicate).length;
     const newCount = validPayslip.filter(c => c.status === 'new').length;
     // KFI is on the disbursing leader (not original CS), so include all disbursed by this leader
     const kfiAmount = disburseCases.reduce((s,c) => s + (c.disburse_amount || 0), 0);
-    const loanSubmission = submitCases.filter(c => !c.is_duplicate && c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'tak_layak').reduce((s,c) => s + (c.loan_amount || 0), 0);
+    const loanSubmission = submitCases.filter(c => !c.is_duplicate && c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'unqualified').reduce((s,c) => s + (c.loan_amount || 0), 0);
     const rejected = rejectCases.filter(c => !c.is_duplicate).length;
     const lostAmount = rejectCases.filter(c => !c.is_duplicate).reduce((s,c) => s + (c.loan_amount || 0), 0);
     
@@ -2693,13 +2693,13 @@ const Logic = {
     const rejectCases = this.monthlyRejectCases(opts);
     
     const total = payslipCases.length;
-    const submitted = submitCases.filter(c => c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'tak_layak').length;
+    const submitted = submitCases.filter(c => c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'unqualified').length;
     const disbursed = disburseCases.length;
     const rejected = rejectCases.length;
     const newCount = payslipCases.filter(c => c.status === 'new').length;
     const pending = this.pendingCases().length;
     const kfiAmount = disburseCases.reduce((s,c) => s + (c.disburse_amount || 0), 0);
-    const loanSubmission = submitCases.filter(c => c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'tak_layak').reduce((s,c) => s + (c.loan_amount || 0), 0);
+    const loanSubmission = submitCases.filter(c => c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'unqualified').reduce((s,c) => s + (c.loan_amount || 0), 0);
     const lostAmount = rejectCases.reduce((s,c) => s + (c.loan_amount || 0), 0);
     return { total, submitted, disbursed, rejected, newCount, pending, kfiAmount, loanSubmission, lostAmount };
   },
@@ -2764,7 +2764,7 @@ const Logic = {
     // Submit lump-sum bonus (item 4) - SOLO ONLY (TL doesn't earn this)
     // Count cases submitted this month, excluding rejected (item 4: 当月reject的话就不算kpi)
     const submitCases = this.monthlySubmitCases({ leaderId, ym });
-    const validKpi = submitCases.filter(c => !c.is_duplicate && c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'tak_layak').length;
+    const validKpi = submitCases.filter(c => !c.is_duplicate && c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'unqualified').length;
     let submitLump = 0, submitTier = null;
     const submitTiers = stats.isSolo ? SOLO_SUBMIT_TIERS : [];  // TL has no submit tiers
     if (stats.isSolo) {
@@ -2927,12 +2927,12 @@ const Logic = {
     const bonusCases = disburseCases.filter(c => ['YTAA','KOMUJA'].includes(c.package_id));
     return {
       total: payslipCases.length,
-      submitted: submitCases.filter(c => c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'tak_layak').length,
-      kpi: submitCases.filter(c => c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'tak_layak').length,
+      submitted: submitCases.filter(c => c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'unqualified').length,
+      kpi: submitCases.filter(c => c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'unqualified').length,
       disbursed: disburseCases.length,
       rejected: rejectCases.length,
       kfiAmount: disburseCases.reduce((s,c) => s + (c.disburse_amount || 0), 0),
-      loanSubmission: submitCases.filter(c => c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'tak_layak').reduce((s,c) => s + (c.loan_amount || 0), 0),
+      loanSubmission: submitCases.filter(c => c.status !== 'rejected' && c.status !== 'on_hold' && c.status !== 'unqualified').reduce((s,c) => s + (c.loan_amount || 0), 0),
       lostAmount: rejectCases.reduce((s,c) => s + (c.loan_amount || 0), 0),
       bonusKfi: bonusCases.reduce((s,c) => s + (c.disburse_amount || 0), 0)
     };
@@ -3811,7 +3811,7 @@ if (isLeader && (this.state.tabState.cases || 'mine') === 'team') {
       </div>
       
       <div class="filter-bar">
-        ${['all','new','contacted','proposed','submitted','approved','disbursed','pending','potential','on_hold','tak_layak','rejected'].map(s => 
+        ${['all','new','contacted','proposed','submitted','approved','disbursed','pending','potential','on_hold','unqualified','rejected'].map(s => 
           `<div class="filter-chip ${filterStatus === s ? 'active' : ''}" onclick="App.setFilter('csCases','${s}')">${s === 'all' ? 'All' : STATUS_LABELS[s]}</div>`
         ).join('')}
       </div>
@@ -6758,7 +6758,7 @@ if (!Permissions.canViewAllBranches(user)) {
       </div>` : ''}
 
       <div class="filter-bar">
-        ${['all','new','contacted','proposed','submitted','approved','disbursed','pending','potential','on_hold','tak_layak','rejected','duplicate'].map(s => 
+        ${['all','new','contacted','proposed','submitted','approved','disbursed','pending','potential','on_hold','unqualified','rejected','duplicate'].map(s => 
           `<div class="filter-chip ${filterStatus === s ? 'active' : ''}" onclick="App.setFilter('adminCust','${s}')" ${s === 'duplicate' ? 'style="background: #FEE2E2; color: #991B1B; border-color: #FCA5A5;"' : ''}>${s === 'all' ? 'All Status' : s === 'duplicate' ? '⚠ Duplicates' : STATUS_LABELS[s]}</div>`
         ).join('')}
       </div>
