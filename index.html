@@ -165,7 +165,7 @@ window.__firebaseStatus = { stage: 'loading', error: null };
         this.save(queue);
         console.warn(`📥 Outbox queued: ${op.op} ${op.collection}/${op.docId} (total: ${queue.length})`);
         // Update UI badge
-        if (typeof App !== '' && App.render) {
+        if (typeof App !== 'undefined' && App.render) {
           try { App.render(); } catch {}
         }
       },
@@ -204,7 +204,7 @@ window.__firebaseStatus = { stage: 'loading', error: null };
         if (synced > 0) {
           Logger.debug(`✅ Outbox: ${synced} synced, ${remaining.length} still pending`);
           if (typeof toast === 'function') toast(`☁ ${synced} pending operations synced`);
-          if (typeof App !== '' && App.render) {
+          if (typeof App !== 'undefined' && App.render) {
             try { App.render(); } catch {}
           }
         }
@@ -3051,7 +3051,7 @@ const Logic = {
 // Although our app is internal (14 staff, controlled domain), defense-in-depth is good practice.
 // Use this for any user-typed string that goes into innerHTML/template literal output.
 function esc(s) {
-  if (s === null || s === ) return '';
+  if (s === null || s === undefined) return '';
   return String(s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -3061,7 +3061,7 @@ function esc(s) {
 }
 
 function fmt(n) { 
-  if (n === null || n === ) return '0';
+  if (n === null || n === undefined) return '0';
   return Number(n).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function fmtK(n) {
@@ -3109,7 +3109,7 @@ function phoneLink(phone, inline = false) {
 //   { name: 'Detail', rows: [...] }
 // ]);
 function downloadAsExcel(filename, sheets) {
-  if (typeof XLSX === '') {
+  if (typeof XLSX === 'undefined') {
     console.warn('SheetJS not loaded, falling back to CSV');
     // Combine all sheets into one CSV (first sheet only)
     const firstSheet = sheets[0] || { rows: [] };
@@ -3329,12 +3329,6 @@ this.bindCommonEvents();
   // ============ CHANGE PASSWORD ============
   // force=true → cannot be dismissed (used when password is default/weak)
   openChangePassword(force = false) {
-    // Only Boss/Manager/HQ can change own password (per business rule)
-    // 'force' bypass allowed when default/weak password forced change
-    if (!force && !['admin', 'manager', 'hq'].includes(Auth.current()?.role)) { 
-      toast('Sila hubungi Boss / Manager / HQ untuk tukar password'); 
-      return; 
-    }
     const user = Auth.current();
     if (!user) return;
     showModal(`
@@ -3849,7 +3843,7 @@ setSearchCS(val) {
     const input = document.querySelector('.search-input');
     if (input) {
       input.focus();
-      if (cursorPos !== ) input.setSelectionRange(cursorPos, cursorPos);
+      if (cursorPos !== undefined) input.setSelectionRange(cursorPos, cursorPos);
     }
   }, 180);
 },
@@ -4414,9 +4408,9 @@ ${stage2Done && canProcessStage2 ? (
           
           const changeRows = Object.keys(changes).map(field => {
             const ch = changes[field];
-            const fromVal = ch.from === null || ch.from ===  ? '—' : 
+            const fromVal = ch.from === null || ch.from === undefined ? '—' : 
                            typeof ch.from === 'object' ? JSON.stringify(ch.from) : String(ch.from);
-            const toVal = ch.to === null || ch.to ===  ? '—' :
+            const toVal = ch.to === null || ch.to === undefined ? '—' :
                          typeof ch.to === 'object' ? JSON.stringify(ch.to) : String(ch.to);
             const fromDisp = STATUS_LABELS[fromVal] || fromVal;
             const toDisp = STATUS_LABELS[toVal] || toVal;
@@ -6823,7 +6817,7 @@ if (!Permissions.canViewAllBranches(user)) {
       const input = document.querySelector('.search-input');
       if (input) {
         input.focus();
-        if (cursorPos !== ) input.setSelectionRange(cursorPos, cursorPos);
+        if (cursorPos !== undefined) input.setSelectionRange(cursorPos, cursorPos);
       }
     }, 180);
   },
@@ -7571,7 +7565,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
               ${showProfit ? `
                 <div style="border-left: 1px solid rgba(255,255,255,0.2); padding-left: 12px;">
                   <div style="font-size: 10px; opacity: 0.8;">💼 Company Profit</div>
-                  <div style="font-size: 22px; font-weight: 800; color: var(--accent);">RM ${(totals.profit).toLocaleString(, {maximumFractionDigits: 0})}</div>
+                  <div style="font-size: 22px; font-weight: 800; color: var(--accent);">RM ${(totals.profit).toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
                   <div style="font-size: 11px; opacity: 0.8;">commission earned</div>
                 </div>
               ` : ''}
@@ -7636,12 +7630,12 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
                   <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-2); font-size: 11px; color: var(--ink-2); display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
                     <span>🌟 Top: <strong>${s.topPerformer.name}</strong> · RM ${s.topPerformer.amount.toLocaleString()}</span>
                     ${showProfit && s.profit > 0 ? `
-                      <span style="background: linear-gradient(135deg, #16A34A 0%, #22C55E 100%); color: white; padding: 3px 10px; border-radius: 10px; font-weight: 800; font-size: 11px;">💼 RM ${s.profit.toLocaleString(, {maximumFractionDigits: 0})} profit</span>
+                      <span style="background: linear-gradient(135deg, #16A34A 0%, #22C55E 100%); color: white; padding: 3px 10px; border-radius: 10px; font-weight: 800; font-size: 11px;">💼 RM ${s.profit.toLocaleString(undefined, {maximumFractionDigits: 0})} profit</span>
                     ` : ''}
                   </div>
                 ` : (showProfit && s.profit > 0 ? `
                   <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-2); display: flex; justify-content: flex-end;">
-                    <span style="background: linear-gradient(135deg, #16A34A 0%, #22C55E 100%); color: white; padding: 3px 10px; border-radius: 10px; font-weight: 800; font-size: 11px;">💼 RM ${s.profit.toLocaleString(, {maximumFractionDigits: 0})} profit</span>
+                    <span style="background: linear-gradient(135deg, #16A34A 0%, #22C55E 100%); color: white; padding: 3px 10px; border-radius: 10px; font-weight: 800; font-size: 11px;">💼 RM ${s.profit.toLocaleString(undefined, {maximumFractionDigits: 0})} profit</span>
                   </div>
                 ` : '')}
               </div>
@@ -7997,6 +7991,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
         { icon: 'export', label: 'Export', screen: 'admin-export' },
       ];
     }
+    items.push({ icon: 'lock', label: 'Password', action: 'changePassword' });
     items.push({ icon: 'logout', label: 'Logout', action: 'logout' });
     
     const icons = {
@@ -8659,7 +8654,7 @@ async handleImportCSV(event) {
           .filter(row => row.some(cell => cell !== ''))
           .map(row => {
             const obj = {};
-            headers.forEach((h, i) => obj[h] = row[i] !==  && row[i] !== null ? String(row[i]).trim() : '');
+            headers.forEach((h, i) => obj[h] = row[i] !== undefined && row[i] !== null ? String(row[i]).trim() : '');
             return obj;
           })
           .filter(r => r['Customer Name'] && r['Customer Name'] !== 'No' && !r['Customer Name'].startsWith('==='));
@@ -11005,7 +11000,7 @@ async function bootstrap() {
           DB.set(DB.K.notifications, all);
           
           // Play sound for highest-severity arrival (if any)
-          if (arrivedNotifs.length > 0 && typeof App !== '' && App.playNotifSound) {
+          if (arrivedNotifs.length > 0 && typeof App !== 'undefined' && App.playNotifSound) {
             const severities = ['high', 'medium', 'low'];
             const topSeverity = severities.find(s => arrivedNotifs.some(n => n.severity === s)) || 'medium';
             try { App.playNotifSound(topSeverity); } catch {}
@@ -11177,7 +11172,7 @@ function tryBoot() {
   if (booted) return;
   // Cloud is "ready" if window.Cloud object exists (either connected or in error state)
   // OR if 8s timeout has passed
-  const cloudObjectExists = typeof window.Cloud !== '';
+  const cloudObjectExists = typeof window.Cloud !== 'undefined';
   if (domReady && (cloudReady || cloudObjectExists)) {
     booted = true;
     bootstrap();
@@ -11195,7 +11190,7 @@ window.addEventListener('DOMContentLoaded', () => {
 let pollCount = 0;
 const cloudPoll = setInterval(() => {
   pollCount++;
-  if (typeof window.Cloud !== '' || pollCount > 80) {  // poll for 8s max
+  if (typeof window.Cloud !== 'undefined' || pollCount > 80) {  // poll for 8s max
     cloudReady = true;
     clearInterval(cloudPoll);
     if (domReady) tryBoot();
