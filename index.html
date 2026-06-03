@@ -6754,22 +6754,47 @@ if (!Permissions.canViewAllBranches(user)) {
       }
     }
     
+// Smart date helper — use most relevant date based on case status
+    // disbursed case Feb→May? Filter "May" should still show it via date_disbursed
+    const getRelevantDate = (c) => {
+      if (c.status === 'disbursed' && c.date_disbursed) return c.date_disbursed;
+      if (c.status === 'approved' && c.date_approved) return c.date_approved;
+      if (c.status === 'submitted' && c.date_submitted) return c.date_submitted;
+      if (c.status === 'rejected' && c.date_rejected) return c.date_rejected;
+      return c.date_payslip;
+    };
+    
     // Date range filter (if both provided, takes precedence over Time chip)
     if (dateFrom && dateTo) {
-      cases = cases.filter(c => c.date_payslip >= dateFrom && c.date_payslip <= dateTo);
+      cases = cases.filter(c => {
+        const d = getRelevantDate(c);
+        return d && d >= dateFrom && d <= dateTo;
+      });
     } else if (dateFrom) {
-      cases = cases.filter(c => c.date_payslip >= dateFrom);
+      cases = cases.filter(c => {
+        const d = getRelevantDate(c);
+        return d && d >= dateFrom;
+      });
     } else if (dateTo) {
-      cases = cases.filter(c => c.date_payslip <= dateTo);
+      cases = cases.filter(c => {
+        const d = getRelevantDate(c);
+        return d && d <= dateTo;
+      });
     } else {
       // Time filter chip (only if no date range)
       if (filterTime === 'month') {
         const ym = new Date().toISOString().slice(0,7);
-        cases = cases.filter(c => c.date_payslip && c.date_payslip.startsWith(ym));
+        cases = cases.filter(c => {
+          const d = getRelevantDate(c);
+          return d && d.startsWith(ym);
+        });
       } else if (filterTime === '3months') {
         const cutoff = new Date();
         cutoff.setMonth(cutoff.getMonth() - 3);
-        cases = cases.filter(c => c.date_payslip && new Date(c.date_payslip) >= cutoff);
+        cases = cases.filter(c => {
+          const d = getRelevantDate(c);
+          return d && new Date(d) >= cutoff;
+        });
       }
       // 'all' = no filter
     }
