@@ -10773,68 +10773,6 @@ removeListItem(key, idx) {
       const a = DB.activities().find(x => x.cs_id === userId && x.date === ds) || { calls: 0, whatsapp: 0, payslip: 0 };
       last7.push({ date: ds, ...a });
     }
-
-    // Manager edits CS/Leader/Solo's daily activity (recent 30 days)
-  editStaffDaily(userId) {
-    if (!Permissions.canManageStaff(Auth.current())) { toast('No permission'); return; }
-    const u = DB.user(userId);
-    if (!u) return;
-    
-    // Last 30 days
-    const today = new Date();
-    const days = [];
-    for (let i = 0; i < 30; i++) {
-      const d = new Date(today);
-      d.setDate(d.getDate() - i);
-      const dStr = d.toISOString().slice(0, 10);
-      const a = DB.activities().find(x => x.cs_id === userId && x.date === dStr) || {};
-      days.push({
-        date: dStr,
-        label: d.toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' }),
-        calls: a.calls || 0,
-        whatsapp: a.whatsapp || 0,
-        payslip: a.payslip || 0,
-        isToday: i === 0
-      });
-    }
-    
-    showModal(`
-      <div class="modal-title">📅 Edit Daily Report</div>
-      <div class="modal-sub">${esc(u.name)} (${u.role}) · Last 30 days</div>
-      
-      <div class="info-banner info" style="margin: 0 0 14px;">
-        <strong>Manager Override.</strong> Tukar angka kalau CS lupa fill. Changes save automatically.
-      </div>
-      
-      <div style="display: grid; grid-template-columns: 90px 1fr 1fr 1fr; gap: 4px; font-size: 10px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; padding: 8px 0; border-bottom: 2px solid var(--border-2); position: sticky; top: 0; background: var(--cream);">
-        <div>Date</div>
-        <div style="text-align: center;">Calls</div>
-        <div style="text-align: center;">WA</div>
-        <div style="text-align: center;">PS</div>
-      </div>
-      <div style="max-height: 60vh; overflow-y: auto;">
-        ${days.map(d => `
-          <div style="display: grid; grid-template-columns: 90px 1fr 1fr 1fr; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--border-2); align-items: center; ${d.isToday ? 'background: rgba(245,197,24,0.08);' : ''}">
-            <div style="font-size: 11px; font-weight: 700; color: var(--ink-2);">${d.label}${d.isToday ? ' ★' : ''}</div>
-            <input type="number" min="0" id="ed-${d.date}-calls" value="${d.calls}" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: 13px; text-align: center;" onchange="App.saveStaffDaily('${userId}', '${d.date}', 'calls', this.value)">
-            <input type="number" min="0" id="ed-${d.date}-whatsapp" value="${d.whatsapp}" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: 13px; text-align: center;" onchange="App.saveStaffDaily('${userId}', '${d.date}', 'whatsapp', this.value)">
-            <input type="number" min="0" id="ed-${d.date}-payslip" value="${d.payslip}" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: 13px; text-align: center;" onchange="App.saveStaffDaily('${userId}', '${d.date}', 'payslip', this.value)">
-          </div>
-        `).join('')}
-      </div>
-      
-      <button class="btn-secondary" style="margin-top: 12px;" onclick="hideModal()">Done</button>
-    `);
-  },
-  
-  // Save single field for a single date
-  saveStaffDaily(userId, dateStr, field, value) {
-    if (!Permissions.canManageStaff(Auth.current())) { toast('No permission'); return; }
-    const val = parseInt(value) || 0;
-    if (val < 0) { toast('Cannot be negative'); return; }
-    DB.updateActivityForDate(userId, dateStr, { [field]: val });
-    toast(`✓ ${DB.user(userId)?.name} · ${dateStr} · ${field}: ${val}`);
-  },
     
     // Login activity (from loginAttempts)
     const attempts = DB.loginAttempts(userId);
@@ -10968,6 +10906,68 @@ removeListItem(key, idx) {
       
       <button class="btn-secondary" onclick="App.editUser('${userId}')" style="margin-top:8px;">← Back to Edit</button>
     `);
+  },
+  
+  // Manager edits CS/Leader/Solo's daily activity (recent 30 days)
+  editStaffDaily(userId) {
+    if (!Permissions.canManageStaff(Auth.current())) { toast('No permission'); return; }
+    const u = DB.user(userId);
+    if (!u) return;
+    
+    // Last 30 days
+    const today = new Date();
+    const days = [];
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const dStr = d.toISOString().slice(0, 10);
+      const a = DB.activities().find(x => x.cs_id === userId && x.date === dStr) || {};
+      days.push({
+        date: dStr,
+        label: d.toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' }),
+        calls: a.calls || 0,
+        whatsapp: a.whatsapp || 0,
+        payslip: a.payslip || 0,
+        isToday: i === 0
+      });
+    }
+    
+    showModal(`
+      <div class="modal-title">📅 Edit Daily Report</div>
+      <div class="modal-sub">${esc(u.name)} (${u.role}) · Last 30 days</div>
+      
+      <div class="info-banner info" style="margin: 0 0 14px;">
+        <strong>Manager Override.</strong> Tukar angka kalau CS lupa fill. Changes save automatically.
+      </div>
+      
+      <div style="display: grid; grid-template-columns: 90px 1fr 1fr 1fr; gap: 4px; font-size: 10px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; padding: 8px 0; border-bottom: 2px solid var(--border-2); position: sticky; top: 0; background: var(--cream);">
+        <div>Date</div>
+        <div style="text-align: center;">Calls</div>
+        <div style="text-align: center;">WA</div>
+        <div style="text-align: center;">PS</div>
+      </div>
+      <div style="max-height: 60vh; overflow-y: auto;">
+        ${days.map(d => `
+          <div style="display: grid; grid-template-columns: 90px 1fr 1fr 1fr; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--border-2); align-items: center; ${d.isToday ? 'background: rgba(245,197,24,0.08);' : ''}">
+            <div style="font-size: 11px; font-weight: 700; color: var(--ink-2);">${d.label}${d.isToday ? ' ★' : ''}</div>
+            <input type="number" min="0" id="ed-${d.date}-calls" value="${d.calls}" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: 13px; text-align: center;" onchange="App.saveStaffDaily('${userId}', '${d.date}', 'calls', this.value)">
+            <input type="number" min="0" id="ed-${d.date}-whatsapp" value="${d.whatsapp}" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: 13px; text-align: center;" onchange="App.saveStaffDaily('${userId}', '${d.date}', 'whatsapp', this.value)">
+            <input type="number" min="0" id="ed-${d.date}-payslip" value="${d.payslip}" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: 13px; text-align: center;" onchange="App.saveStaffDaily('${userId}', '${d.date}', 'payslip', this.value)">
+          </div>
+        `).join('')}
+      </div>
+      
+      <button class="btn-secondary" style="margin-top: 12px;" onclick="hideModal()">Done</button>
+    `);
+  },
+  
+  // Save single field for a single date
+  saveStaffDaily(userId, dateStr, field, value) {
+    if (!Permissions.canManageStaff(Auth.current())) { toast('No permission'); return; }
+    const val = parseInt(value) || 0;
+    if (val < 0) { toast('Cannot be negative'); return; }
+    DB.updateActivityForDate(userId, dateStr, { [field]: val });
+    toast(`✓ ${DB.user(userId)?.name} · ${dateStr} · ${field}: ${val}`);
   },
   
   // ============ DATA BACKUP (JSON Download) ============
