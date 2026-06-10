@@ -1914,12 +1914,12 @@ cases[idx] = { ...before, ...updates };
   deleteKoperasi(id) {
     const list = this.koperasi().filter(p => p.id !== id);
     this.set(this.K.koperasi, list);
-    if (window.Cloud?.connected) {
-      window._koperasiWritePending = true;
-      window.Cloud.deleteDoc('koperasi', id).then(() => {
-        window._koperasiWritePending = false;
-      });
-    }
+if (window.Cloud) {
+  window._koperasiWritePending = true;
+  window.Cloud.deleteDoc('koperasi', id).then(() => {
+    window._koperasiWritePending = false;
+  });
+}
     refreshPackages();
   },
   
