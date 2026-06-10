@@ -9499,11 +9499,20 @@ async handleImportCSV(event) {
         // Default date_payslip to today (CRITICAL: prevent null sort crashes)
         const datePayslip = d(row['Date Payslip']) || today;
         
-        // Duplicate detection (IC + branch + same month)
+        // AUTO Duplicate detection: ANY case with same IC + branch (any time)
         const ic = row['IC']?.replace(/[^0-9]/g, '') || '';
-        const ym = datePayslip.slice(0, 7);
-        const sameMonth = existingCases.find(c => c.ic === ic && c.branch_id === branchId && c.date_payslip?.slice(0, 7) === ym);
-        const isDuplicate = !!sameMonth;
+        const existingMatches = existingCases.filter(c => c.ic === ic && c.branch_id === branchId);
+        const sortedMatches = existingMatches.slice().sort((a, b) => 
+          (a.date_payslip || '9999').localeCompare(b.date_payslip || '9999')
+        );
+        // If this imported case has earlier date than all existing → it's the original
+        // Otherwise → it's a duplicate
+        const earlierExists = sortedMatches.some(m => 
+          (m.date_payslip || '9999') < datePayslip ||
+          ((m.date_payslip || '9999') === datePayslip && m.id < ('c' + Date.now()))
+        );
+        const originalImport = earlierExists ? sortedMatches[0] : null;
+        const isDuplicate = !!originalImport;
         
         const id = 'c' + Date.now() + '_' + idx.toString(36) + Math.random().toString(36).slice(2,5);
         
@@ -9549,8 +9558,8 @@ async handleImportCSV(event) {
           remark_admin: row['Remark Admin']?.trim() || ('Imported ' + today),
           remarks: [],
           is_duplicate: isDuplicate,
-          original_keyer: isDuplicate ? sameMonth.source_cs_id : null,
-          duplicate_of: isDuplicate ? sameMonth.id : null,
+          original_keyer: isDuplicate ? originalImport.source_cs_id : null,
+          duplicate_of: isDuplicate ? originalImport.id : null,
           imported: true,
           created_at: row['Created'] || new Date().toISOString(),
           audit_log: [{
