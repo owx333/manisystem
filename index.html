@@ -920,7 +920,7 @@ function refreshPackages() {
       DEFAULT_PACKAGES.forEach(p => window.Cloud.setDoc('koperasi', p.id, p));
     }
   } else {
-    LOAN_PACKAGES = stored;
+    LOAN_PACKAGES = stored.filter(p => p.active !== false);
   }
   // Derive isHighPayout dynamically (>= 65% payout)
   LOAN_PACKAGES.forEach(p => { p.isHighPayout = p.payout >= 65; });
@@ -1911,15 +1911,17 @@ cases[idx] = { ...before, ...updates };
     refreshPackages();
     return list[idx];
   },
-  deleteKoperasi(id) {
-    const list = this.koperasi().filter(p => p.id !== id);
+deleteKoperasi(id) {
+    const list = this.koperasi();
+    const idx = list.findIndex(p => p.id === id);
+    if (idx === -1) return;
+    list[idx].active = false;
     this.set(this.K.koperasi, list);
-if (window.Cloud) {
-  window._koperasiWritePending = true;
-  window.Cloud.deleteDoc('koperasi', id).then(() => {
-    window._koperasiWritePending = false;
-  });
-}
+    if (window.Cloud) {
+      window.Cloud.setDoc('koperasi', id, list[idx]);
+    }
+    refreshPackages();
+  },
     refreshPackages();
   },
   
@@ -8897,21 +8899,21 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
   renderAdminKoperasi(user) {
     const packages = DB.koperasi();
     return this.topBar(user, 'Koperasi Packages', 'Manage loan products') + `
-      <div class="section-header">
-        <div class="section-title">${packages.length} Active Packages</div>
+<div class="section-header">
+        <div class="section-title">${packages.filter(p => p.active !== false).length} Active · ${packages.filter(p => p.active === false).length} Inactive</div>
         <a class="section-action" onclick="App.openAddKoperasi()">+ Add Koperasi</a>
       </div>
       
       <div class="info-banner info" style="margin: 0 20px 14px;">
-        <strong>Manage your koperasi list here.</strong> Add new koperasi, edit rates, or remove old ones. Updates auto-sync to all users via cloud.
+        <strong>Manage your koperasi list here.</strong> Add new koperasi, edit rates, or deactivate old ones. Updates auto-sync to all users via cloud.
       </div>
       
       <div style="padding: 0 20px;">
         ${packages.map(p => `
-          <div class="case-card" style="margin-bottom: 8px;">
+          <div class="case-card" style="margin-bottom: 8px; ${p.active === false ? 'opacity: 0.5;' : ''}">
             <div class="case-card-top">
               <div style="flex: 1;">
-                <div class="case-customer">${p.name}</div>
+                <div class="case-customer">${p.name} ${p.active === false ? '<span style="font-size: 10px; background: var(--cream-3); color: var(--ink-3); padding: 2px 7px; border-radius: 8px; font-weight: 700; margin-left: 4px;">INACTIVE</span>' : ''}</div>
                 <div style="font-size: 12px; color: var(--ink-3); margin-top: 4px;">
                   Rate: <strong style="color: var(--primary);">${p.rate}%</strong> · 
                   Payout: <strong style="color: ${p.payout >= 70 ? 'var(--success)' : 'var(--ink-2)'};">${p.payout}%</strong> · 
@@ -8929,15 +8931,16 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
                 ${p.remarks ? `<div style="font-size: 11px; color: var(--ink-3); margin-top: 4px; font-style: italic;">"${p.remarks}"</div>` : ''}
               </div>
               <div style="display: flex; flex-direction: column; gap: 4px;">
-                <button onclick="App.openEditKoperasi('${p.id}')" style="background: var(--cream); color: var(--ink-2); border: 1px solid var(--border); padding: 6px 12px; border-radius: 8px; font-family: inherit; font-weight: 700; font-size: 11px; cursor: pointer;">Edit</button>
-                <button onclick="App.confirmDeleteKoperasi('${p.id}')" style="background: var(--cream); color: var(--danger); border: 1px solid rgba(184, 66, 58, 0.3); padding: 6px 12px; border-radius: 8px; font-family: inherit; font-weight: 700; font-size: 11px; cursor: pointer;">Delete</button>
+                ${p.active !== false ? `<button onclick="App.openEditKoperasi('${p.id}')" style="background: var(--cream); color: var(--ink-2); border: 1px solid var(--border); padding: 6px 12px; border-radius: 8px; font-family: inherit; font-weight: 700; font-size: 11px; cursor: pointer;">Edit</button>` : ''}
+                ${p.active !== false 
+                  ? `<button onclick="App.confirmDeleteKoperasi('${p.id}')" style="background: var(--cream); color: var(--danger); border: 1px solid rgba(184, 66, 58, 0.3); padding: 6px 12px; border-radius: 8px; font-family: inherit; font-weight: 700; font-size: 11px; cursor: pointer;">Deactivate</button>`
+                  : `<button onclick="App.reactivateKoperasi('${p.id}')" style="background: var(--cream); color: var(--success); border: 1px solid rgba(45, 122, 80, 0.3); padding: 6px 12px; border-radius: 8px; font-family: inherit; font-weight: 700; font-size: 11px; cursor: pointer;">Reactivate</button>`
+                }
               </div>
             </div>
           </div>
         `).join('')}
       </div>
-    `;
-  },
   
   openAddKoperasi() {
     showModal(`
@@ -9081,13 +9084,25 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
     }
   },
   
-  confirmDeleteKoperasi(id) {
+confirmDeleteKoperasi(id) {
     if (!Permissions.canManageKoperasi(Auth.current())) { toast('No permission'); return; }
     const p = DB.koperasiById(id);
     if (!p) return;
-    if (!confirm(`Delete "${p.name}" permanently?\n\nExisting cases using this koperasi will keep their data but can't be edited.`)) return;
+    if (!confirm(`Deactivate "${p.name}"?\n\nPackage akan disembunyikan dari staff. Existing cases tidak terjejas. Boleh reactivate semula.`)) return;
     DB.deleteKoperasi(id);
-    toast('Koperasi "' + p.name + '" deleted');
+    toast('Koperasi "' + p.name + '" deactivated');
+    this.render();
+  },
+  reactivateKoperasi(id) {
+    if (!Permissions.canManageKoperasi(Auth.current())) { toast('No permission'); return; }
+    const list = DB.koperasi();
+    const idx = list.findIndex(p => p.id === id);
+    if (idx === -1) return;
+    list[idx].active = true;
+    DB.set(DB.K.koperasi, list);
+    if (window.Cloud) window.Cloud.setDoc('koperasi', id, list[idx]);
+    refreshPackages();
+    toast('Koperasi "' + list[idx].name + '" reactivated');
     this.render();
   },
   
