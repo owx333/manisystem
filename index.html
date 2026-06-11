@@ -3503,6 +3503,14 @@ const App = {
       return;
     }
     
+    // FORCE password change for weak/default passwords (flag set at login)
+    if (user.must_change_pw && !this._pwModalShown) {
+      this._pwModalShown = true;  // once per page load · changePassword clears the flag
+      setTimeout(() => {
+        if (Auth.current()?.must_change_pw) this.openChangePassword(true);
+      }, 600);
+    }
+    
     // Logged in
     document.body.classList.remove('login-mode');
     this.renderPersonaBar();
