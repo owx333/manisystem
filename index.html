@@ -2360,6 +2360,7 @@ const Auth = {
         DB.setSession(user.id);
         const weak = (password === '1234' || password.length < 6);
         if (weak && !user.must_change_pw) DB.updateUser(user.id, { must_change_pw: true });
+        else if (!weak && user.must_change_pw) DB.updateUser(user.id, { must_change_pw: false });  // self-heal stale flag
         return { ok: true, user };
         
       } catch (e) {
@@ -2450,6 +2451,7 @@ const Auth = {
     // Flag default/weak passwords so the app can force a change on entry
     const weak = (password === '1234' || password.length < 6);
     if (weak && !user.must_change_pw) DB.updateUser(user.id, { must_change_pw: true });
+        else if (!weak && user.must_change_pw) DB.updateUser(user.id, { must_change_pw: false });  // self-heal stale flag
     return { ok: true, user };
   },
   logout() {
