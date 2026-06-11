@@ -61,7 +61,7 @@ window.__firebaseStatus = { stage: 'loading', error: null };
     //   silently creates their personal Firebase Auth account on first successful login.
     // Phase 2 (after ALL staff migrated): set legacyFallback=false AND deploy strict
     //   firestore.rules → F12 tampering becomes impossible (server-side enforcement).
-    window.PERUSER_FLAGS = { enabled: true, legacyFallback: true };
+    window.PERUSER_FLAGS = { enabled: true, legacyFallback: false };
     
     // ========== SHARED AUTH (Layer 2 Security · legacy, used only while legacyFallback=true) ==========
     // Auto-signin to a shared service account so Firestore rules can require auth
@@ -73,9 +73,19 @@ window.__firebaseStatus = { stage: 'loading', error: null };
     };
     
     async function ensureSharedAuth() {
-      // Per-user strict mode: never sign in shared account
+      // Per-user strict mode: never sign in shared account.
+      // Firebase restores the persisted per-user session ASYNCHRONOUSLY —
+      // wait for the first auth-state emission (max 3s) so boot doesn't
+      // race it and wrongly fall back to local cache.
       if (!window.PERUSER_FLAGS.legacyFallback) {
-        return !!fbAuth.currentUser;
+        if (fbAuth.currentUser) return true;
+        const restored = await new Promise(resolve => {
+          let done = false;
+          const finish = u => { if (done) return; done = true; try { unsub(); } catch (_) {} resolve(u); };
+          const unsub = fbAuth.onAuthStateChanged(finish);
+          setTimeout(() => finish(fbAuth.currentUser), 3000);
+        });
+        return !!restored;
       }
       // Already signed in? skip
       if (fbAuth.currentUser) {
@@ -1562,12 +1572,20 @@ const DB = {
   },
   
   deleteUserById(id) {
+    const target = this.user(id);
     const users = this.users().filter(u => u.id !== id);
     this.set(this.K.users, users);
     if (window.Cloud?.connected) {
       window.Cloud.deleteDoc('users', id).catch(e => 
         console.error('Failed to delete user from Firestore:', e)
       );
+      // CRITICAL: also delete auth_map — security rules grant access based on it.
+      // Without this, a deleted staff's Firebase token would still pass the rules.
+      if (target?.auth_uid) {
+        window.Cloud.deleteDoc('auth_map', target.auth_uid).catch(e =>
+          console.error('Failed to delete auth_map:', e)
+        );
+      }
     }
     return true;
   },
@@ -3738,6 +3756,12 @@ this.bindCommonEvents();
         return;
       }
       err.classList.remove('show');
+      // Strict per-user mode: if this device booted with no auth session,
+      // reload once after login so Firestore subscriptions attach properly
+      if (window.PERUSER_FLAGS && !window.PERUSER_FLAGS.legacyFallback && window.__bootedWithoutAuth) {
+        location.reload();
+        return;
+      }
       this.state.currentScreen = this.defaultScreen(result.user);
       setTimeout(() => this.checkFollowUpReminders(), 2000);
       
@@ -11971,9 +11995,15 @@ async function bootstrap() {
       if (window.Cloud.ensureAuth) {
         const authed = await window.Cloud.ensureAuth();
         cloudAuthed = authed;
+        window.__bootedWithoutAuth = !authed;
         if (!authed) {
-          console.warn('⚠ Shared auth not ready · Firestore reads may fail · falling back to local cache');
-          toastIfReady('⚠ Cloud auth failed · using local cache only');
+          if (window.PERUSER_FLAGS && !window.PERUSER_FLAGS.legacyFallback && !DB.session()) {
+            // Strict per-user mode + not logged in = EXPECTED · Firestore loads after login
+            console.log('🔐 Per-user mode · belum login · cloud data loads after login');
+          } else {
+            console.warn('⚠ Shared auth not ready · Firestore reads may fail · falling back to local cache');
+            toastIfReady('⚠ Cloud auth failed · using local cache only');
+          }
         }
       }
       
