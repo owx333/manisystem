@@ -888,6 +888,83 @@ body.app-ready #app { opacity: 1; transition: opacity 0.2s; }
   .login-form { max-width: 420px; width: 100%; margin: 40px auto 0 !important; }
   .login-footer { max-width: 420px; margin: 30px auto 0; }
 }
+
+/* ═══════════════════════════════════════════════════════
+   ✨ WOW LAYER · visual upgrade (additive · zero workflow change)
+   ═══════════════════════════════════════════════════════ */
+
+/* ── Animated Login Hero ── */
+#screen-login { position: relative; overflow: hidden; min-height: 100vh; }
+.login-orbs { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.login-orb { position: absolute; border-radius: 50%; filter: blur(2px); opacity: 0.5; animation: orbFloat 14s ease-in-out infinite; }
+.login-orb.o1 { width: 280px; height: 280px; top: -90px; right: -70px; background: radial-gradient(circle at 30% 30%, rgba(245,197,24,0.5), rgba(245,197,24,0.05) 70%); animation-delay: 0s; }
+.login-orb.o2 { width: 200px; height: 200px; bottom: 8%; left: -80px; background: radial-gradient(circle at 60% 40%, rgba(27,107,67,0.85), rgba(27,107,67,0.08) 70%); animation-delay: -4s; animation-duration: 18s; }
+.login-orb.o3 { width: 120px; height: 120px; top: 38%; right: 6%; background: radial-gradient(circle at 40% 40%, rgba(255,217,61,0.35), transparent 70%); animation-delay: -8s; animation-duration: 11s; }
+.login-grid-glow { position: absolute; inset: 0; pointer-events: none; background-image: linear-gradient(rgba(245,197,24,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(245,197,24,0.045) 1px, transparent 1px); background-size: 44px 44px; mask-image: radial-gradient(ellipse 90% 60% at 50% 28%, black 30%, transparent 75%); animation: gridDrift 26s linear infinite; }
+@keyframes orbFloat { 0%,100% { transform: translate(0,0) scale(1); } 33% { transform: translate(18px,-24px) scale(1.06); } 66% { transform: translate(-14px,16px) scale(0.96); } }
+@keyframes gridDrift { from { background-position: 0 0, 0 0; } to { background-position: 44px 44px, 44px 44px; } }
+
+.login-header { position: relative; z-index: 2; animation: heroIn 0.9s cubic-bezier(0.22,1,0.36,1) both; }
+.login-awara { background: linear-gradient(110deg, var(--accent) 20%, #FFF3C4 38%, var(--accent) 56%); background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: goldShimmer 5s ease-in-out infinite; }
+@keyframes goldShimmer { 0%,100% { background-position: 0% 0; } 50% { background-position: 100% 0; } }
+@keyframes heroIn { from { opacity: 0; transform: translateY(26px) scale(0.97); } to { opacity: 1; transform: none; } }
+
+.login-form { position: relative; z-index: 2; background: rgba(255,255,255,0.06); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border: 1px solid rgba(245,197,24,0.18); border-radius: 22px; padding: 26px 22px 22px; margin: 0 24px; box-shadow: 0 24px 60px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.1); animation: heroIn 0.9s 0.15s cubic-bezier(0.22,1,0.36,1) both; }
+.login-form .input-group input { background: rgba(8,64,37,0.45); border: 1px solid rgba(245,197,24,0.16); transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s; }
+.login-form .input-group input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(245,197,24,0.16), 0 8px 24px rgba(0,0,0,0.25); transform: translateY(-1px); }
+.login-btn { position: relative; overflow: hidden; transition: transform 0.18s, box-shadow 0.18s; }
+.login-btn::after { content: ''; position: absolute; top: 0; left: -80%; width: 50%; height: 100%; background: linear-gradient(100deg, transparent, rgba(255,255,255,0.45), transparent); transform: skewX(-22deg); animation: btnSheen 3.6s ease-in-out infinite; }
+.login-btn:active { transform: scale(0.985); }
+@keyframes btnSheen { 0%, 60% { left: -80%; } 100% { left: 130%; } }
+.login-footer { position: relative; z-index: 2; animation: heroIn 0.9s 0.3s both; }
+
+/* ── Glass Modals ── */
+.modal-overlay { backdrop-filter: blur(10px) saturate(1.1); -webkit-backdrop-filter: blur(10px) saturate(1.1); }
+.modal { backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); border: 1px solid rgba(255,255,255,0.65); box-shadow: 0 30px 80px rgba(8,64,37,0.3), inset 0 1px 0 rgba(255,255,255,0.8); animation: modalPop 0.32s cubic-bezier(0.34,1.4,0.64,1) both; }
+@keyframes modalPop { from { opacity: 0; transform: translateY(22px) scale(0.96); } to { opacity: 1; transform: none; } }
+
+/* ── KPI cards · glass polish + hover lift + staggered entrance ── */
+.kpi-card { position: relative; overflow: hidden; transition: transform 0.22s cubic-bezier(0.34,1.3,0.64,1), box-shadow 0.22s; border: 1px solid rgba(255,255,255,0.55); box-shadow: 0 6px 22px rgba(15,81,50,0.07), inset 0 1px 0 rgba(255,255,255,0.7); animation: cardRise 0.5s cubic-bezier(0.22,1,0.36,1) both; }
+.kpi-grid .kpi-card:nth-child(1) { animation-delay: 0.03s; } .kpi-grid .kpi-card:nth-child(2) { animation-delay: 0.08s; }
+.kpi-grid .kpi-card:nth-child(3) { animation-delay: 0.13s; } .kpi-grid .kpi-card:nth-child(4) { animation-delay: 0.18s; }
+.kpi-grid .kpi-card:nth-child(5) { animation-delay: 0.23s; } .kpi-grid .kpi-card:nth-child(6) { animation-delay: 0.28s; }
+.kpi-card:active { transform: scale(0.985); }
+@media (hover: hover) { .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 14px 34px rgba(15,81,50,0.14); } }
+.kpi-card.featured::before { content: ''; position: absolute; top: 0; left: -120%; width: 60%; height: 100%; background: linear-gradient(100deg, transparent, rgba(255,255,255,0.14), transparent); transform: skewX(-20deg); animation: cardSheen 6s 1.2s ease-in-out infinite; pointer-events: none; }
+@keyframes cardSheen { 0%, 70% { left: -120%; } 100% { left: 150%; } }
+@keyframes cardRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+/* ── Cards / chips / buttons micro-interactions ── */
+.case-card, .qa-card { transition: transform 0.18s, box-shadow 0.18s; }
+@media (hover: hover) { .case-card:hover, .qa-card:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(15,81,50,0.1); } }
+.case-card:active { transform: scale(0.99); }
+.filter-chip { transition: all 0.18s cubic-bezier(0.34,1.3,0.64,1); }
+.filter-chip:active { transform: scale(0.94); }
+.filter-chip.active { box-shadow: 0 4px 14px rgba(15,81,50,0.22); }
+.submit-btn, .btn-secondary { transition: transform 0.15s, box-shadow 0.15s, filter 0.15s; }
+.submit-btn:active, .btn-secondary:active { transform: scale(0.98); }
+@media (hover: hover) { .submit-btn:hover { filter: brightness(1.06); box-shadow: 0 8px 22px rgba(15,81,50,0.25); } }
+.screen.active { animation: screenFade 0.28s ease both; }
+@keyframes screenFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* ── SVG Trend Chart ── */
+.trend-chart-card { margin: 4px 20px 14px; background: linear-gradient(160deg, var(--primary) 0%, var(--primary-dark) 100%); border-radius: 18px; padding: 18px 16px 12px; position: relative; overflow: hidden; box-shadow: 0 14px 38px rgba(8,64,37,0.3); animation: cardRise 0.5s 0.2s both; }
+.trend-chart-card::before { content: ""; position: absolute; top: -60px; right: -60px; width: 190px; height: 190px; background: radial-gradient(circle, rgba(245,197,24,0.22) 0%, transparent 65%); }
+.trend-bar { animation: barGrow 0.85s cubic-bezier(0.22,1,0.36,1) both; transform-origin: bottom; }
+@keyframes barGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+/* ── Confetti ── */
+@keyframes cfFall { 0% { transform: translate(0, -20px) rotate(0deg); opacity: 1; } 100% { transform: translate(var(--drift, 0px), 105vh) rotate(680deg); opacity: 0.85; } }
+@keyframes cfBurst { 0% { transform: translate(-50%,-50%) scale(0.3); opacity: 0; } 18% { transform: translate(-50%,-50%) scale(1.12); opacity: 1; } 30% { transform: translate(-50%,-50%) scale(1); } 75% { opacity: 1; } 100% { transform: translate(-50%,-60%) scale(0.96); opacity: 0; } }
+
+/* ── Bell shake (when unread) ── */
+.bell-live .bell-icon { display: inline-block; animation: bellShake 3.2s ease-in-out infinite; transform-origin: top center; }
+.bell-live .bell-badge { animation: badgePulse 1.6s ease-in-out infinite; }
+@keyframes bellShake { 0%, 76%, 100% { transform: rotate(0); } 80% { transform: rotate(13deg); } 84% { transform: rotate(-11deg); } 88% { transform: rotate(8deg); } 92% { transform: rotate(-6deg); } 96% { transform: rotate(3deg); } }
+@keyframes badgePulse { 0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(229,62,62,0.5); } 50% { transform: scale(1.12); box-shadow: 0 0 0 5px rgba(229,62,62,0); } }
+
+/* ── Step pulse (stepper current + podium gold) ── */
+@keyframes stepPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.09); } }
 </style>
 </head>
 <body>
@@ -3478,6 +3555,7 @@ function teamName(leaderId) {
   return l ? l.name : '—';
 }
 function toast(msg) {
+  try { navigator.vibrate && navigator.vibrate(10); } catch (_) {}  // ✨ subtle haptic on mobile
   const container = document.getElementById('toast-container');
   if (!container) { Logger.debug('[toast]', msg); return; }
   const t = document.createElement('div');
@@ -3583,6 +3661,11 @@ const App = {
     }
     
 app.innerHTML = content + this.renderBottomNav(user, screen) + this.renderFab(screen);
+    // ✨ Count-up KPI numbers · once per screen entry
+    if (this._lastCountScreen !== screen) {
+      this._lastCountScreen = screen;
+      requestAnimationFrame(() => this.animateCountUps());
+    }
 const screenEl = app.querySelector('.screen');
 if (screenEl) screenEl.classList.add('active');
 this.bindCommonEvents();
@@ -3708,6 +3791,12 @@ this.bindCommonEvents();
     const isDev = location.search.includes('dev=1');
     return `
       <section id="screen-login" class="screen">
+        <div class="login-orbs">
+          <div class="login-orb o1"></div>
+          <div class="login-orb o2"></div>
+          <div class="login-orb o3"></div>
+        </div>
+        <div class="login-grid-glow"></div>
         <div class="login-header">
           <div class="login-awara">AWARA</div>
           <div class="login-tagline">Sdn Bhd</div>
@@ -3839,16 +3928,16 @@ this.bindCommonEvents();
             })()}
             ${(() => {
               const unread = DB.unreadCount(user.id);
-              return `<div onclick="App.openNotifications()" style="position:relative;cursor:pointer;width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:var(--cream-2);border-radius:50%;border:1px solid var(--border);">
-                <span style="font-size:16px;">🔔</span>
-                ${unread > 0 ? `<span style="position:absolute;top:-2px;right:-2px;background:#E53E3E;color:white;font-size:9px;font-weight:800;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 3px;">${unread > 9 ? '9+' : unread}</span>` : ''}
+              return `<div onclick="App.openNotifications()" class="${unread > 0 ? 'bell-live' : ''}" style="position:relative;cursor:pointer;width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:var(--cream-2);border-radius:50%;border:1px solid var(--border);">
+                <span class="bell-icon" style="font-size:16px;">🔔</span>
+                ${unread > 0 ? `<span class="bell-badge" style="position:absolute;top:-2px;right:-2px;background:#E53E3E;color:white;font-size:9px;font-weight:800;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 3px;">${unread > 9 ? '9+' : unread}</span>` : ''}
               </div>`;
             })()}
             <div class="avatar">${initials(user.name)}</div>
           </div>
         </div>
         <div class="greeting">
-          <div class="hi">${subtitle || 'Selamat Datang'}</div>
+          <div class="hi">${subtitle || this.greetingText()}</div>
           <div class="name">Hi, <em>${user.name}</em></div>
           <div class="role-tag">${roleTag}</div>
         </div>
@@ -3918,6 +4007,34 @@ this.bindCommonEvents();
           <div class="sub">${fmtRM(stats.lostAmount)} potential lost</div>
         </div>
       </div>
+      
+      ${(() => {
+        // 🎯 Monthly KPI progress ring
+        const target = 10;  // KPI target per month
+        const kpi = stats.submitted;
+        const pct = Math.min(1, kpi / target);
+        const hit = kpi >= target;
+        const R = 42, C = 2 * Math.PI * R;
+        return `
+          <div style="margin: 4px 20px 14px; padding: 16px; background: ${hit ? 'linear-gradient(150deg, #B8860B, #DAA520 60%, #F5C518)' : 'linear-gradient(160deg, var(--primary), var(--primary-dark))'}; border-radius: 18px; display: flex; align-items: center; gap: 16px; box-shadow: 0 12px 32px ${hit ? 'rgba(218,165,32,0.4)' : 'rgba(8,64,37,0.28)'}; position: relative; overflow: hidden; animation: cardRise 0.5s 0.15s both;">
+            <div style="position:absolute;top:-50px;right:-50px;width:160px;height:160px;background:radial-gradient(circle, rgba(255,255,255,0.14) 0%, transparent 65%);"></div>
+            <svg width="100" height="100" viewBox="0 0 100 100" style="flex-shrink:0;">
+              <circle cx="50" cy="50" r="${R}" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="9"/>
+              <circle cx="50" cy="50" r="${R}" fill="none" stroke="${hit ? '#FFFFFF' : 'url(#ringGold)'}" stroke-width="9" stroke-linecap="round"
+                stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}" transform="rotate(-90 50 50)"
+                style="transition: stroke-dashoffset 1.2s cubic-bezier(0.22,1,0.36,1);"/>
+              <defs><linearGradient id="ringGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#FFD93D"/><stop offset="100%" stop-color="#D4A50E"/></linearGradient></defs>
+              <text x="50" y="47" text-anchor="middle" font-size="22" font-weight="800" fill="${hit ? 'white' : 'var(--accent)'}" font-family="inherit">${kpi}</text>
+              <text x="50" y="63" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(255,255,255,0.7)" font-family="inherit">/ ${target}</text>
+            </svg>
+            <div style="position: relative;">
+              <div style="font-size: 10px; color: ${hit ? 'rgba(255,255,255,0.9)' : 'var(--accent)'}; text-transform: uppercase; letter-spacing: 0.14em; font-weight: 800;">${hit ? '🎉 Target Tercapai!' : '🎯 KPI Bulan Ini'}</div>
+              <div style="font-family:'Fraunces',serif; font-size: 21px; font-weight: 600; color: white; margin: 3px 0 2px;">${hit ? 'Hebat, ' + esc(user.name.split(' ')[0]) + '!' : (target - kpi) + ' lagi ke target'}</div>
+              <div style="font-size: 11px; color: rgba(255,255,255,0.75); font-weight: 600;">${hit ? 'Teruskan momentum 🔥' : Math.round(pct * 100) + '% complete · submit lagi untuk capai 🎯'}</div>
+            </div>
+          </div>
+        `;
+      })()}
       
       <div class="targets-card">
         <div class="targets-title">Sasaran Hari Ini · ${new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })}</div>
@@ -4034,6 +4151,9 @@ this.bindCommonEvents();
     const caseTypeBadge = c.case_type === 'special' ? `<span class="badge" style="background: rgba(245, 197, 24, 0.2); color: var(--accent-deep);">Special</span>` :
                           c.case_type === 'resubmit' ? `<span class="badge" style="background: var(--info-bg); color: var(--info);">Resubmit</span>` : '';
     
+    const employerBadge = c.employer_type ? `<span class="badge" style="background: var(--primary); color: var(--accent); font-weight: 800;">${c.employer_type}</span>` : '';
+    const custTypeBadge = c.customer_type === 'special' ? `<span class="badge" style="background: linear-gradient(135deg, #B8860B, #DAA520); color: white; font-weight: 800;">⭐ Special</span>` : '';
+    
     // Subtitle: for new cases show salary info; for processed cases show package
     let subtitle = '';
     if (isNew || !pkg) {
@@ -4053,6 +4173,8 @@ this.bindCommonEvents();
         </div>
         <div class="case-meta">
           <span>${dateStr}</span>
+          ${employerBadge}
+          ${custTypeBadge}
           ${caseTypeBadge}
           ${metaBadge}
         </div>
@@ -4107,6 +4229,12 @@ if (isLeader && (this.state.tabState.cases || 'mine') === 'team') {
     // Status filter
     if (filterStatus !== 'all') cases = cases.filter(c => c.status === filterStatus);
     
+    // Employer / customer type filters
+    const filterEmployerCS = this.state.filterState.csEmployer || 'all';
+    if (filterEmployerCS !== 'all') cases = cases.filter(c => c.employer_type === filterEmployerCS);
+    const filterCustTypeCS = this.state.filterState.csCustType || 'all';
+    if (filterCustTypeCS !== 'all') cases = cases.filter(c => c.customer_type === filterCustTypeCS);
+    
     // Search
     if (searchText) {
       cases = cases.filter(c => 
@@ -4154,6 +4282,15 @@ if (isLeader && (this.state.tabState.cases || 'mine') === 'team') {
       <div class="filter-bar">
         ${['all','new','contacted','proposed','submitted','approved','disbursed','pending','potential','on_hold','unqualified','rejected'].map(s => 
           `<div class="filter-chip ${filterStatus === s ? 'active' : ''}" onclick="App.setFilter('csCases','${s}')">${s === 'all' ? 'All' : STATUS_LABELS[s]}</div>`
+        ).join('')}
+      </div>
+      <div class="filter-bar">
+        ${['all','AG','SG','GLC'].map(t => 
+          `<div class="filter-chip ${(this.state.filterState.csEmployer || 'all') === t ? 'active' : ''}" onclick="App.setFilter('csEmployer','${t}')">${t === 'all' ? 'All Majikan' : '🏛 ' + t}</div>`
+        ).join('')}
+        <div style="width: 1px; background: var(--border); margin: 2px 4px;"></div>
+        ${[['all','All Kategori'],['normal','Normal'],['special','⭐ Special']].map(([v,l]) => 
+          `<div class="filter-chip ${(this.state.filterState.csCustType || 'all') === v ? 'active' : ''}" onclick="App.setFilter('csCustType','${v}')">${l}</div>`
         ).join('')}
       </div>
       <div style="padding: 8px 20px; font-size: 11px; color: var(--ink-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em;">${cases.length} cases</div>
@@ -4239,6 +4376,13 @@ setSearchCS(val) {
     showModal(`
       <div class="modal-title">${esc(c.customer_name)} ${c.is_duplicate ? '<span style="background: var(--warning-bg); color: var(--warning); font-size: 10px; padding: 3px 8px; border-radius: 8px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 800; vertical-align: middle;">Duplicate</span>' : ''}</div>
       <div class="modal-sub">IC: ${c.ic || '—'} · ${phoneLink(c.phone, true)}</div>
+      ${c.employer_type || c.customer_type ? `
+        <div style="display: flex; gap: 6px; margin: 6px 0 10px;">
+          ${c.employer_type ? `<span style="background: var(--primary); color: var(--accent); font-size: 10px; padding: 4px 10px; border-radius: 8px; font-weight: 800; letter-spacing: 0.08em;">🏛 ${c.employer_type}</span>` : ''}
+          ${c.customer_type ? `<span style="background: ${c.customer_type === 'special' ? 'linear-gradient(135deg, #B8860B, #DAA520)' : 'var(--cream-2)'}; color: ${c.customer_type === 'special' ? 'white' : 'var(--ink-2)'}; font-size: 10px; padding: 4px 10px; border-radius: 8px; font-weight: 800; letter-spacing: 0.08em; ${c.customer_type === 'normal' ? 'border: 1px solid var(--border);' : ''}">${c.customer_type === 'special' ? '⭐ SPECIAL' : 'NORMAL'}</span>` : ''}
+        </div>
+      ` : ''}
+      ${this.statusStepper(c)}
 ${c.is_duplicate ? (() => {
         const tier = (user.role === 'admin' || user.role === 'hq') ? 3
                     : (user.role === 'manager' || user.role === 'kerani') ? 2
@@ -5510,6 +5654,7 @@ ${stage2Done && canProcessStage2 ? (
     });
     hideModal();
     toast(wasDisbursed ? 'Updated · RM ' + fmt(amount) + ' · KFI/profit recalculated' : 'Disbursed · RM ' + fmt(amount) + ' · KFI credited');
+    if (!wasDisbursed) this.celebrate('RM ' + fmt(amount) + ' Disbursed!');
     this.render();
   },
   
@@ -5965,6 +6110,57 @@ ${stage2Done && canProcessStage2 ? (
   },
   
   // ============ ADMIN DASHBOARD ============
+  // ✨ Inline SVG 6-month disbursement trend (no CDN dependency)
+  renderTrendChart(branchId) {
+    const months = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({ ym: d.toISOString().slice(0, 7), label: d.toLocaleDateString('en-MY', { month: 'short' }) });
+    }
+    let cases = DB.cases().filter(c => c.status === 'disbursed' && c.disburse_amount > 0);
+    if (branchId) cases = cases.filter(c => c.branch_id === branchId);
+    
+    const data = months.map(m => ({
+      ...m,
+      total: cases.filter(c => (c.date_disbursed || c.date_payslip || '').startsWith(m.ym))
+                  .reduce((s, c) => s + (c.disburse_amount || 0), 0)
+    }));
+    const max = Math.max(1, ...data.map(d => d.total));
+    
+    const W = 320, H = 130, PAD = 6, barW = 34, gap = (W - PAD * 2 - barW * 6) / 5;
+    const bars = data.map((d, i) => {
+      const h = Math.max(3, (d.total / max) * (H - 36));
+      const x = PAD + i * (barW + gap);
+      const y = H - 22 - h;
+      const isMax = d.total === max && d.total > 0;
+      return `
+        <rect class="trend-bar" x="${x}" y="${y}" width="${barW}" height="${h}" rx="6"
+              fill="${isMax ? 'url(#goldGrad)' : 'rgba(245,197,24,0.32)'}" style="animation-delay: ${0.25 + i * 0.08}s;"/>
+        <text x="${x + barW / 2}" y="${H - 8}" text-anchor="middle" font-size="9.5" font-weight="700" fill="rgba(250,247,240,0.65)" font-family="inherit">${d.label}</text>
+        ${d.total > 0 ? `<text x="${x + barW / 2}" y="${y - 5}" text-anchor="middle" font-size="9" font-weight="800" fill="${isMax ? '#FFD93D' : 'rgba(250,247,240,0.8)'}" font-family="inherit">${fmtK(d.total)}</text>` : ''}
+      `;
+    }).join('');
+    
+    return `
+      <div class="trend-chart-card">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; position: relative;">
+          <div style="font-size: 10px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.15em; font-weight: 800;">📈 Disbursement Trend</div>
+          <div style="font-size: 10px; color: rgba(250,247,240,0.6); font-weight: 600;">6 bulan</div>
+        </div>
+        <svg viewBox="0 0 ${W} ${H}" style="width: 100%; height: auto; display: block; position: relative;">
+          <defs>
+            <linearGradient id="goldGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#FFD93D"/>
+              <stop offset="100%" stop-color="#D4A50E"/>
+            </linearGradient>
+          </defs>
+          ${bars}
+        </svg>
+      </div>
+    `;
+  },
+  
   renderAdminDashboard(user) {
     const branchId = Permissions.canViewAllBranches(user) ? null : user.branch_id;
     const stats = Logic.companyStats(branchId);
@@ -6022,6 +6218,8 @@ ${Permissions.canViewProfit(user) ? `
           <div class="sub">cases submitted</div>
         </div>
       </div>
+      
+      ${this.renderTrendChart(branchId)}
 
       ${branchBreakdown ? `
       <div class="section-header"><div class="section-title">📊 Branch Breakdown</div></div>
@@ -6174,7 +6372,7 @@ ${Permissions.canViewProfit(user) ? `
     if (!Permissions.canViewAllBranches(user)) {
       cases = cases.filter(c => c.branch_id === user.branch_id || (!c.branch_id && user.branch_id === DB.branches().find(b => b.id !== 'hq')?.id));
     }
-    const rows = [['Date Payslip', 'Branch', 'CS', 'Team Leader', 'Customer', 'IC', 'Phone', 'Pendapatan', 'Potongan', 'Gaji Bersih', 'Peratus', 'Package', 'Loan Amount', 'Tenor', 'Bulanan', 'Case Type', 'Status', 'Disburse Amount', 'Rejection Reason']];
+    const rows = [['Date Payslip', 'Branch', 'CS', 'Team Leader', 'Customer', 'IC', 'Phone', 'Majikan', 'Kategori', 'Pendapatan', 'Potongan', 'Gaji Bersih', 'Peratus', 'Package', 'Loan Amount', 'Tenor', 'Bulanan', 'Case Type', 'Status', 'Disburse Amount', 'Rejection Reason']];
     cases.forEach(c => {
       const cs = DB.user(c.source_cs_id);
       const leader = DB.user(c.leader_id);
@@ -6182,6 +6380,7 @@ ${Permissions.canViewProfit(user) ? `
       rows.push([
         c.date_payslip, branch?.name || '', cs?.name || c.source_cs_id, leader?.name || c.leader_id,
         c.customer_name, c.ic, c.phone || '',
+        c.employer_type || '', c.customer_type === 'special' ? 'Special' : (c.customer_type === 'normal' ? 'Normal' : ''),
         c.jumlah_pendapatan, c.jumlah_potongan, c.gaji_bersih, c.gaji_bersih_pct?.toFixed(2) + '%',
         pkgName(c.package_id) || '', c.loan_amount || '', c.tenor || '', c.bulanan?.toFixed(2) || '',
         c.case_type || '', STATUS_LABELS[c.status] || c.status,
@@ -6323,6 +6522,38 @@ ${Permissions.canViewProfit(user) ? `
         <button class="tab ${tab === 'team' ? 'active' : ''}" onclick="App.setTab('adminRank','team')">Team Ranking</button>
       </div>
       <div style="padding: 10px 20px; font-size: 11px; color: var(--ink-3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;">${tab === 'cs' ? 'Sorted by Payslip count' : 'Sorted by KFI disburse'}</div>
+      
+      ${(() => {
+        // 🏆 Top-3 Podium
+        const rows = tab === 'cs' ? csRows : teamRows;
+        const top3 = rows.filter(r => (tab === 'cs' ? r.payslip : r.kfi) > 0).slice(0, 3);
+        if (top3.length < 2) return '';
+        const metric = r => tab === 'cs' ? r.payslip + ' payslip' : 'RM ' + fmtK(r.kfi);
+        const seat = (r, place) => {
+          if (!r) return '<div style="flex:1;"></div>';
+          const conf = {
+            1: { h: 86, medal: '🥇', grad: 'linear-gradient(160deg, #FFD93D, #D4A50E)', glow: '0 10px 30px rgba(245,197,24,0.45)', av: 52, ring: 'var(--accent)' },
+            2: { h: 60, medal: '🥈', grad: 'linear-gradient(160deg, #D7D7DB, #A8A8B0)', glow: '0 8px 22px rgba(160,160,170,0.4)', av: 42, ring: '#C0C0C8' },
+            3: { h: 46, medal: '🥉', grad: 'linear-gradient(160deg, #E3A878, #B87648)', glow: '0 8px 22px rgba(190,120,70,0.4)', av: 42, ring: '#CD8B5C' }
+          }[place];
+          return `
+            <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; animation: cardRise 0.5s ${place === 1 ? 0.1 : place === 2 ? 0.2 : 0.3}s both;">
+              <div style="font-size:${place === 1 ? 26 : 20}px; ${place === 1 ? 'animation: stepPulse 2.4s ease-in-out infinite;' : ''}">${conf.medal}</div>
+              <div style="width:${conf.av}px;height:${conf.av}px;border-radius:50%;background:var(--primary);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:${place === 1 ? 17 : 14}px;border:3px solid ${conf.ring};box-shadow:${conf.glow};">${initials(r.user.name)}</div>
+              <div style="font-size:11px;font-weight:800;color:var(--ink);text-align:center;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.user.name)}</div>
+              <div style="font-size:10px;font-weight:700;color:var(--accent-deep);">${metric(r)}</div>
+              <div style="width:84%;height:${conf.h}px;background:${conf.grad};border-radius:10px 10px 0 0;box-shadow:${conf.glow};display:flex;align-items:flex-start;justify-content:center;padding-top:6px;font-family:'Fraunces',serif;font-weight:700;font-size:${place === 1 ? 22 : 17}px;color:rgba(255,255,255,0.9);">${place}</div>
+            </div>
+          `;
+        };
+        return `
+          <div style="margin: 4px 20px 16px; padding: 18px 8px 0; background: linear-gradient(180deg, var(--cream-2), var(--cream)); border-radius: 16px; border: 1px solid var(--border-2); overflow: hidden;">
+            <div style="display: flex; align-items: flex-end; gap: 4px;">
+              ${seat(top3[1], 2)}${seat(top3[0], 1)}${seat(top3[2], 3)}
+            </div>
+          </div>
+        `;
+      })()}
       
       <div style="padding: 0 0 20px;">
         ${tab === 'cs' 
@@ -6698,6 +6929,31 @@ ${Permissions.canViewProfit(user) ? `
         <div id="dup-warning" style="display: none; margin-bottom: 14px;"></div>
         
         <div style="margin: 18px 0 10px;">
+          <div style="font-size: 11px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em;">Jenis Customer</div>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label>Majikan (Employer)</label>
+            <div id="f-employer-chips" style="display: flex; gap: 8px;">
+              ${['AG','SG','GLC'].map(t => `
+                <button type="button" class="type-chip" data-value="${t}" onclick="App.pickChip('f-employer-chips', this)" style="flex:1; padding: 11px 0; border: 1.5px solid var(--border); border-radius: 10px; background: var(--cream); font-family: inherit; font-size: 13px; font-weight: 800; color: var(--ink-2); cursor: pointer; transition: all 0.15s;">${t}</button>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Kategori</label>
+            <div id="f-custtype-chips" style="display: flex; gap: 8px;">
+              ${[['normal','Normal'],['special','Special']].map(([v,l]) => `
+                <button type="button" class="type-chip" data-value="${v}" onclick="App.pickChip('f-custtype-chips', this)" style="flex:1; padding: 11px 0; border: 1.5px solid var(--border); border-radius: 10px; background: var(--cream); font-family: inherit; font-size: 13px; font-weight: 800; color: var(--ink-2); cursor: pointer; transition: all 0.15s;">${l}</button>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+        
+        <div style="margin: 18px 0 10px;">
           <div style="font-size: 11px; color: var(--ink-3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em;">Maklumat Gaji</div>
         </div>
         
@@ -6805,6 +7061,120 @@ ${Permissions.canViewProfit(user) ? `
     toast('Info filled from existing customer');
   },
   
+  // ═══════════ ✨ WOW EFFECTS ═══════════
+  
+  // 🎉 Gold confetti celebration (disburse moment)
+  celebrate(label) {
+    try { navigator.vibrate && navigator.vibrate([30, 40, 60]); } catch (_) {}
+    const colors = ['#F5C518', '#FFD93D', '#D4A50E', '#1B6B43', '#FAF7F0'];
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden;';
+    let html = '';
+    for (let i = 0; i < 56; i++) {
+      const c = colors[i % colors.length];
+      const left = 8 + Math.random() * 84;
+      const size = 6 + Math.random() * 7;
+      const delay = Math.random() * 0.35;
+      const dur = 1.6 + Math.random() * 1.2;
+      const drift = -60 + Math.random() * 120;
+      const round = Math.random() > 0.5 ? '50%' : '2px';
+      html += `<i style="position:absolute;top:-20px;left:${left}%;width:${size}px;height:${size * (round === '2px' ? 1.6 : 1)}px;background:${c};border-radius:${round};animation:cfFall ${dur}s ${delay}s cubic-bezier(0.25,0.46,0.45,0.94) forwards;--drift:${drift}px;"></i>`;
+    }
+    html += `<div style="position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);animation:cfBurst 1.6s cubic-bezier(0.34,1.4,0.64,1) forwards;text-align:center;">
+      <div style="font-size:56px;filter:drop-shadow(0 8px 24px rgba(245,197,24,0.5));">💰</div>
+      <div style="font-family:'Fraunces',serif;font-size:22px;font-weight:700;color:var(--accent);text-shadow:0 2px 16px rgba(0,0,0,0.4);background:rgba(8,64,37,0.85);padding:6px 18px;border-radius:14px;margin-top:6px;">${label || 'Disbursed!'}</div>
+    </div>`;
+    wrap.innerHTML = html;
+    document.body.appendChild(wrap);
+    setTimeout(() => wrap.remove(), 3200);
+  },
+  
+  // 📈 Count-up animation on KPI values
+  animateCountUps() {
+    document.querySelectorAll('.kpi-card .value').forEach(el => {
+      if (el.dataset.counted) return;
+      el.dataset.counted = '1';
+      const node = el.childNodes[el.childNodes.length - 1];
+      if (!node || node.nodeType !== 3) return;
+      const finalText = node.textContent;
+      const m = finalText.match(/^([\d,]+(?:\.\d+)?)([KM]?)$/);
+      if (!m) return;
+      const target = parseFloat(m[1].replace(/,/g, ''));
+      const suffix = m[2] || '';
+      const hasComma = m[1].includes(',');
+      const hasDecimal = m[1].includes('.');
+      if (!isFinite(target) || target === 0) return;
+      const t0 = performance.now(), dur = 750;
+      const step = (t) => {
+        const p = Math.min(1, (t - t0) / dur);
+        const eased = 1 - Math.pow(1 - p, 3);
+        const v = target * eased;
+        let txt = hasDecimal ? v.toFixed(1) : Math.round(v).toString();
+        if (hasComma) txt = Number(txt).toLocaleString('en-US');
+        node.textContent = txt + suffix;
+        if (p < 1) requestAnimationFrame(step);
+        else node.textContent = finalText;
+      };
+      requestAnimationFrame(step);
+    });
+  },
+  
+  // 🌅 Time-based greeting
+  greetingText() {
+    const h = new Date().getHours();
+    if (h < 12) return '🌅 Selamat Pagi';
+    if (h < 19) return '☀️ Selamat Petang';
+    return '🌙 Selamat Malam';
+  },
+  
+  // 📊 Case status pipeline stepper
+  statusStepper(c) {
+    const flow = ['new', 'contacted', 'proposed', 'submitted', 'approved', 'disbursed'];
+    const labels = ['New', 'Call', 'Pkg', 'KPI', 'Appr', '💰'];
+    const idx = flow.indexOf(c.status);
+    if (idx === -1) return '';  // rejected/pending/etc — status pill already shows it
+    return `
+      <div style="display: flex; align-items: center; margin: 10px 0 14px; padding: 0 2px;">
+        ${flow.map((s, i) => {
+          const done = i < idx, cur = i === idx;
+          const dot = `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;">
+            <div style="width:${cur ? 26 : 20}px;height:${cur ? 26 : 20}px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:${cur ? 11 : 9}px;font-weight:800;transition:all 0.3s;
+              ${done ? 'background:var(--primary);color:var(--cream);' : cur ? 'background:var(--accent);color:var(--primary-dark);box-shadow:0 0 0 4px rgba(245,197,24,0.25), 0 4px 12px rgba(245,197,24,0.4);animation:stepPulse 2s ease-in-out infinite;' : 'background:var(--cream-2);color:var(--ink-3);border:1.5px solid var(--border);'}">
+              ${done ? '✓' : (i === 5 ? '💰' : i + 1)}
+            </div>
+            <div style="font-size:8px;font-weight:800;letter-spacing:0.04em;color:${cur ? 'var(--accent-deep)' : done ? 'var(--primary)' : 'var(--ink-3)'};text-transform:uppercase;">${labels[i]}</div>
+          </div>`;
+          const line = i < flow.length - 1 ? `<div style="flex:1;height:2.5px;border-radius:2px;margin:0 3px 14px;background:${i < idx ? 'var(--primary)' : 'var(--cream-3)'};transition:background 0.3s;"></div>` : '';
+          return dot + line;
+        }).join('')}
+      </div>
+    `;
+  },
+  
+  // Chip selector helper · toggles selection within a chip group (click again to unselect)
+  pickChip(groupId, btn) {
+    const group = document.getElementById(groupId);
+    if (!group) return;
+    const wasActive = btn.dataset.active === '1';
+    group.querySelectorAll('.type-chip').forEach(b => {
+      b.dataset.active = '0';
+      b.style.background = 'var(--cream)';
+      b.style.color = 'var(--ink-2)';
+      b.style.borderColor = 'var(--border)';
+    });
+    if (!wasActive) {
+      btn.dataset.active = '1';
+      btn.style.background = 'var(--primary)';
+      btn.style.color = 'var(--accent)';
+      btn.style.borderColor = 'var(--primary)';
+    }
+  },
+  
+  getChipValue(groupId) {
+    const active = document.querySelector(`#${groupId} .type-chip[data-active="1"]`);
+    return active ? active.dataset.value : null;
+  },
+  
   saveCase() {
     const user = Auth.current();
     const name = document.getElementById('f-name').value.trim();
@@ -6839,6 +7209,8 @@ const ic = document.getElementById('f-ic').value.replace(/[^0-9]/g, '');
       leader_id: leaderId,
       customer_name: name,
       ic, phone,
+      employer_type: this.getChipValue('f-employer-chips'),   // AG / SG / GLC
+      customer_type: this.getChipValue('f-custtype-chips'),   // normal / special
       jumlah_pendapatan: pend,
       jumlah_potongan: pot,
       gaji_bersih: bersih,
@@ -7649,6 +8021,14 @@ if (!Permissions.canViewAllBranches(user)) {
     // Team filter
     if (filterTeam !== 'all') cases = cases.filter(c => c.leader_id === filterTeam);
     
+    // Employer type filter (AG / SG / GLC)
+    const filterEmployer = this.state.filterState.adminCustEmployer || 'all';
+    if (filterEmployer !== 'all') cases = cases.filter(c => c.employer_type === filterEmployer);
+    
+    // Customer type filter (normal / special)
+    const filterCustType = this.state.filterState.adminCustType || 'all';
+    if (filterCustType !== 'all') cases = cases.filter(c => c.customer_type === filterCustType);
+    
     // Search
     if (searchText) {
       cases = cases.filter(c => 
@@ -7768,6 +8148,16 @@ if (!Permissions.canViewAllBranches(user)) {
         <div class="filter-chip ${filterTeam === 'all' ? 'active' : ''}" onclick="App.setFilter('adminCustTeam','all')">All Teams</div>
         ${leaders.map(l => 
           `<div class="filter-chip ${filterTeam === l.id ? 'active' : ''}" onclick="App.setFilter('adminCustTeam','${l.id}')">T.${l.name}${l.role === 'solo' ? ' (Solo)' : ''}</div>`
+        ).join('')}
+      </div>
+      
+      <div class="filter-bar">
+        ${['all','AG','SG','GLC'].map(t => 
+          `<div class="filter-chip ${(this.state.filterState.adminCustEmployer || 'all') === t ? 'active' : ''}" onclick="App.setFilter('adminCustEmployer','${t}')">${t === 'all' ? 'All Majikan' : '🏛 ' + t}</div>`
+        ).join('')}
+        <div style="width: 1px; background: var(--border); margin: 2px 4px;"></div>
+        ${[['all','All Kategori'],['normal','Normal'],['special','⭐ Special']].map(([v,l]) => 
+          `<div class="filter-chip ${(this.state.filterState.adminCustType || 'all') === v ? 'active' : ''}" onclick="App.setFilter('adminCustType','${v}')">${l}</div>`
         ).join('')}
       </div>
       
@@ -7912,6 +8302,29 @@ openEditCustomer(caseId) {
         </div>
       </div>
       
+      <div class="form-row">
+        <div class="form-group">
+          <label>Majikan (Employer)</label>
+          <div id="ec-employer-chips" style="display: flex; gap: 8px;">
+            ${['AG','SG','GLC'].map(t => {
+              const on = c.employer_type === t;
+              return `<button type="button" class="type-chip" data-value="${t}" data-active="${on ? '1' : '0'}" onclick="App.pickChip('ec-employer-chips', this)" style="flex:1; padding: 10px 0; border: 1.5px solid ${on ? 'var(--primary)' : 'var(--border)'}; border-radius: 10px; background: ${on ? 'var(--primary)' : 'var(--cream)'}; font-family: inherit; font-size: 12px; font-weight: 800; color: ${on ? 'var(--accent)' : 'var(--ink-2)'}; cursor: pointer; transition: all 0.15s;">${t}</button>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Kategori</label>
+          <div id="ec-custtype-chips" style="display: flex; gap: 8px;">
+            ${[['normal','Normal'],['special','Special']].map(([v,l]) => {
+              const on = c.customer_type === v;
+              return `<button type="button" class="type-chip" data-value="${v}" data-active="${on ? '1' : '0'}" onclick="App.pickChip('ec-custtype-chips', this)" style="flex:1; padding: 10px 0; border: 1.5px solid ${on ? 'var(--primary)' : 'var(--border)'}; border-radius: 10px; background: ${on ? 'var(--primary)' : 'var(--cream)'}; font-family: inherit; font-size: 12px; font-weight: 800; color: ${on ? 'var(--accent)' : 'var(--ink-2)'}; cursor: pointer; transition: all 0.15s;">${l}</button>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+      
 <div class="form-group">
         <label>Date Payslip</label>
         <input type="date" id="ec-date" value="${c.date_payslip || ''}">
@@ -7954,6 +8367,8 @@ saveEditCustomer(caseId) {
     const updates = {
       customer_name: name,
       ic, phone,
+      employer_type: this.getChipValue('ec-employer-chips'),   // AG / SG / GLC
+      customer_type: this.getChipValue('ec-custtype-chips'),   // normal / special
       jumlah_pendapatan: pend,
       jumlah_potongan: pot,
       gaji_bersih: bersih,
