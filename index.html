@@ -12076,7 +12076,7 @@ async function bootstrap() {
           // database — do NOT overwrite the cloud with seed data.
           console.warn('⚠ Cloud read failed/denied — NOT reseeding (avoid clobbering real cloud data). Using local cache.');
           if (DB.users().length === 0) DB.seed();  // only seed LOCALLY if we truly have nothing
-          toastIfReady('⚠ Cloud tak dapat dibaca · semak Firestore Rules · data cloud TIDAK ditimpa');
+          if (DB.users().length === 0) toastIfReady('⚠ Cloud tak dapat dibaca · semak Firestore Rules · data cloud TIDAK ditimpa');
         } else {
           // Auth OK, read OK, database genuinely empty → safe first-time seed + upload
           console.log("Firestore empty. Seeding...");
