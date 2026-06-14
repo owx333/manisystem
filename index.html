@@ -258,7 +258,7 @@ window.__firebaseStatus = { stage: 'loading', error: null };
     window.Cloud = {
       enabled: true,
       connected: false,
-      collections: ['users', 'cases', 'activities', 'customer_notes', 'seen', 'koperasi', 'announcements', 'settings', 'notifications', 'branches', 'login_attempts'],
+      collections: ['users', 'cases', 'activities', 'customer_notes', 'seen', 'koperasi', 'announcements', 'settings', 'notifications', 'branches', 'login_attempts', 'topics'],
       listeners: {},
       
       // Expose for bootstrap to call before Firestore reads
@@ -1591,7 +1591,8 @@ const DB = {
     session: 'awara_session', customer_notes: 'awara_customer_notes',
     seen: 'awara_seen', koperasi: 'awara_koperasi', announcements: 'awara_announcements',
     settings: 'awara_settings', branches: 'awara_branches',
-    notifications: 'awara_notifications', loginAttempts: 'awara_login_attempts'
+    notifications: 'awara_notifications', loginAttempts: 'awara_login_attempts',
+    topics: 'awara_topics'
   },
   
   // ============ IN-MEMORY CACHE (Performance) ============
@@ -1652,6 +1653,7 @@ const DB = {
     this.set(this.K.seen, {});
     this.set(this.K.koperasi, DEFAULT_PACKAGES);
     this.set(this.K.announcements, []);
+    this.set(this.K.topics, []);
     this.set(this.K.settings, DEFAULT_SETTINGS);
   },
   
@@ -2126,6 +2128,89 @@ cases[idx] = { ...before, ...updates };
     const list = this.announcements().filter(a => a.id !== id);
     this.set(this.K.announcements, list);
     if (window.Cloud?.connected) window.Cloud.deleteDoc('announcements', id);
+  },
+  
+  // ============ 💬 KOMUNITI · Topics + Replies ============
+  topics() {
+    return this.get(this.K.topics, [])
+      .sort((a, b) => {
+        // Pinned first, then newest activity
+        if ((b.pinned ? 1 : 0) !== (a.pinned ? 1 : 0)) return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
+        return (b.last_activity || b.created_at || '').localeCompare(a.last_activity || a.created_at || '');
+      });
+  },
+  topic(id) { return this._getById(this.K.topics, id); },
+  addTopic({ title, body, kind, scope }) {
+    const user = Auth.current();
+    if (!user) return null;
+    const now = new Date().toISOString();
+    const t = {
+      id: 'topic_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      title, body,
+      kind: kind || 'discuss',          // announce / question / discuss / share
+      scope: scope || 'branch',         // branch / company
+      branch_id: user.branch_id,
+      author_id: user.id,
+      author_name: user.name,
+      status: 'open',                   // open / resolved (for questions)
+      pinned: false,
+      replies: [],
+      created_at: now,
+      last_activity: now
+    };
+    const list = this.get(this.K.topics, []);
+    list.unshift(t);
+    this.set(this.K.topics, list);
+    if (window.Cloud?.connected) window.Cloud.setDoc('topics', t.id, t);
+    return t;
+  },
+  addReply(topicId, text) {
+    const user = Auth.current();
+    if (!user) return null;
+    const list = this.get(this.K.topics, []);
+    const t = list.find(x => x.id === topicId);
+    if (!t) return null;
+    const reply = {
+      id: 'r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
+      author_id: user.id,
+      author_name: user.name,
+      text,
+      created_at: new Date().toISOString()
+    };
+    t.replies = t.replies || [];
+    t.replies.push(reply);
+    t.last_activity = reply.created_at;
+    this.set(this.K.topics, list);
+    if (window.Cloud?.connected) window.Cloud.setDoc('topics', t.id, t);
+    return reply;
+  },
+  deleteReply(topicId, replyId) {
+    const list = this.get(this.K.topics, []);
+    const t = list.find(x => x.id === topicId);
+    if (!t) return;
+    t.replies = (t.replies || []).filter(r => r.id !== replyId);
+    this.set(this.K.topics, list);
+    if (window.Cloud?.connected) window.Cloud.setDoc('topics', t.id, t);
+  },
+  updateTopic(id, updates) {
+    const list = this.get(this.K.topics, []);
+    const t = list.find(x => x.id === id);
+    if (!t) return;
+    Object.assign(t, updates);
+    this.set(this.K.topics, list);
+    if (window.Cloud?.connected) window.Cloud.setDoc('topics', t.id, t);
+  },
+  deleteTopic(id) {
+    const list = this.get(this.K.topics, []).filter(t => t.id !== id);
+    this.set(this.K.topics, list);
+    if (window.Cloud?.connected) window.Cloud.deleteDoc('topics', id);
+  },
+  // Topics visible to a user: company-wide OR same branch · Boss/HQ see all
+  visibleTopics(user) {
+    if (!user) return [];
+    const all = this.topics();
+    if (Permissions.canViewAllBranches(user)) return all;
+    return all.filter(t => t.scope === 'company' || t.branch_id === user.branch_id);
   },
   
   // ============ BROADCAST NOTIFICATION TO MULTIPLE ROLES ============
@@ -3721,6 +3806,7 @@ const App = {
         if (!Permissions.canEditSettings(user)) { content = this.renderAdminDashboard(user); break; }
         content = this.renderAdminSettings(user); break;
       case 'add-case': content = this.renderAddCase(user); break;
+      case 'komuniti': content = this.renderKomuniti(user); break;
       default: content = this.renderCSDashboard(user);
     }
     
@@ -4051,6 +4137,7 @@ this.bindCommonEvents();
     
     return this.topBar(user) + this.monthPill() + 
       this.renderAnnouncementBanner() + 
+      this.renderDayBanners(user) + 
       this.renderPerformanceBanner(user) + 
       this.renderLiveFeed(user) + 
       this.renderHallOfFame(user) + `
@@ -5985,6 +6072,7 @@ ${stage2Done && canProcessStage2 ? (
     
     return this.topBar(user) + this.monthPill() + 
       this.renderAnnouncementBanner() + 
+      this.renderDayBanners(user) + 
       this.renderPerformanceBanner(user) + 
       this.renderLiveFeed(user) + 
       this.renderHallOfFame(user) + `
@@ -6306,7 +6394,7 @@ ${stage2Done && canProcessStage2 ? (
     }) : null;
     
     return this.topBar(user, 'Boss Dashboard') + this.monthPill() + 
-      this.renderAnnouncementBanner() + `
+      this.renderAnnouncementBanner() + this.renderDayBanners(user) + `
       <div class="kpi-grid">
         <div class="kpi-card featured">
           <div class="label">Total Loan Submission</div>
@@ -7685,7 +7773,21 @@ ${Permissions.canViewProfit(user) ? `
         return;
       }
       
-      // 2 · 👑 Monday champion reveal
+      // 2 · 🎉 Festival greeting
+      const fest = this.todayFestival();
+      if (fest) {
+        this.showSplash(`
+          <div style="background:${fest.c};border-radius:24px;padding:30px 24px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,0.5);">
+            <div style="font-size:62px;animation:stepPulse 1.8s ease-in-out infinite;">${fest.e}</div>
+            <div style="font-family:'Fraunces',serif;font-size:24px;font-weight:700;color:white;margin-top:8px;">${esc(fest.n)}</div>
+            <div style="font-size:14px;color:rgba(255,255,255,0.95);margin-top:8px;font-weight:600;line-height:1.5;">${esc(fest.m)}</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.75);margin-top:12px;font-weight:600;">— Keluarga besar AWARA 💚</div>
+          </div>
+        `, 4500);
+        return;
+      }
+      
+      // 3 · 👑 Monday champion reveal
       if (new Date().getDay() === 1) {
         const ch = this.lastWeekChampion(Permissions.canViewAllBranches(user) ? null : user.branch_id);
         if (ch) {
@@ -7704,7 +7806,7 @@ ${Permissions.canViewProfit(user) ? `
         }
       }
       
-      // 3 · 🌅 Daily opening card
+      // 4 · 🌅 Daily opening card
       const quotes = [
         'Setiap call adalah satu peluang. 📞',
         'Rezeki tak datang sendiri — kita yang kejar. 🏃',
@@ -10164,6 +10266,241 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
   },
   
   // ============ BOTTOM NAV ============
+  // ============ 💬 KOMUNITI · Internal Forum ============
+  renderKomuniti(user) {
+    const KIND = {
+      announce: { e: '📢', l: 'Pengumuman', c: '#B8860B' },
+      question: { e: '❓', l: 'Soalan', c: '#2563EB' },
+      discuss: { e: '💬', l: 'Bincang', c: '#1B6B43' },
+      share: { e: '💡', l: 'Kongsi', c: '#7C3AED' }
+    };
+    const filter = this.state.komunitiFilter || 'all';
+    let topics = DB.visibleTopics(user);
+    if (filter !== 'all') topics = topics.filter(t => t.kind === filter);
+    
+    const timeAgo = iso => {
+      const diff = Date.now() - new Date(iso).getTime();
+      const m = Math.floor(diff / 60000), h = Math.floor(diff / 3600000), d = Math.floor(diff / 86400000);
+      if (m < 1) return 'baru je';
+      if (m < 60) return m + ' min lalu';
+      if (h < 24) return h + ' jam lalu';
+      if (d < 7) return d + ' hari lalu';
+      return new Date(iso).toLocaleDateString('en-MY', { day: 'numeric', month: 'short' });
+    };
+    
+    return this.topBar(user, '💬 Komuniti', 'Tanya, kongsi, bincang · semua boleh sertai') + `
+      <div style="padding: 14px 20px 0;">
+        <button class="submit-btn" onclick="App.openNewTopic()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;">
+          ✏️ Mula Topik Baru
+        </button>
+      </div>
+      
+      <div class="filter-bar" style="margin-top:12px;">
+        <div class="filter-chip ${filter === 'all' ? 'active' : ''}" onclick="App.setKomunitiFilter('all')">Semua</div>
+        ${Object.entries(KIND).map(([k, v]) => 
+          `<div class="filter-chip ${filter === k ? 'active' : ''}" onclick="App.setKomunitiFilter('${k}')">${v.e} ${v.l}</div>`
+        ).join('')}
+      </div>
+      
+      <div style="padding: 6px 16px 110px;">
+        ${topics.length === 0 ? `
+          <div style="text-align:center; padding: 50px 20px; color: var(--ink-3);">
+            <div style="font-size: 48px; margin-bottom: 12px;">💬</div>
+            <div style="font-weight: 700; font-size: 15px; color: var(--ink-2);">Belum ada topik lagi</div>
+            <div style="font-size: 13px; margin-top: 4px;">Jadilah yang pertama mula perbualan!</div>
+          </div>
+        ` : topics.map(t => {
+          const k = KIND[t.kind] || KIND.discuss;
+          const replyCount = (t.replies || []).length;
+          const isAuthor = t.author_id === user.id;
+          const resolved = t.kind === 'question' && t.status === 'resolved';
+          return `
+            <div onclick="App.openTopic('${t.id}')" style="background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px; margin-bottom: 10px; cursor: pointer; transition: all 0.18s; position: relative; ${t.pinned ? 'border-color: rgba(245,197,24,0.5); box-shadow: 0 2px 12px rgba(245,197,24,0.12);' : ''}" 
+                 onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 22px rgba(15,81,50,0.1)'" 
+                 onmouseout="this.style.transform='';this.style.boxShadow=this.style.boxShadow.includes('245') ? '0 2px 12px rgba(245,197,24,0.12)' : 'none'">
+              ${t.pinned ? '<span style="position:absolute;top:-7px;right:14px;background:var(--accent);color:var(--primary-dark);font-size:9px;font-weight:800;padding:2px 8px;border-radius:7px;">📌 PINNED</span>' : ''}
+              <div style="display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 7px;">
+                <span style="background: ${k.c}; color: white; font-size: 10px; font-weight: 800; padding: 3px 9px; border-radius: 8px;">${k.e} ${k.l}</span>
+                ${t.scope === 'company' ? '<span style="background: var(--cream-3); color: var(--ink-2); font-size: 9px; font-weight: 800; padding: 3px 8px; border-radius: 7px;">🌍 Semua Branch</span>' : `<span style="background: var(--cream-2); color: var(--ink-3); font-size: 9px; font-weight: 700; padding: 3px 8px; border-radius: 7px;">🏢 ${esc(DB.branch(t.branch_id)?.name || 'Branch')}</span>`}
+                ${resolved ? '<span style="background: var(--success-bg, #DCFCE7); color: var(--success, #16A34A); font-size: 9px; font-weight: 800; padding: 3px 8px; border-radius: 7px;">✅ Resolved</span>' : ''}
+              </div>
+              <div style="font-weight: 800; font-size: 14.5px; color: var(--ink); line-height: 1.35; ${resolved ? 'opacity: 0.6;' : ''}">${esc(t.title)}</div>
+              <div style="font-size: 12.5px; color: var(--ink-2); margin-top: 4px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${esc(t.body || '')}</div>
+              <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 11px; color: var(--ink-3); font-weight: 600;">
+                <span>👤 ${esc(t.author_name.split(' ')[0])}</span>
+                <span>·</span>
+                <span>${timeAgo(t.last_activity || t.created_at)}</span>
+                <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 4px; ${replyCount > 0 ? 'color: var(--primary); font-weight: 800;' : ''}">💬 ${replyCount}</span>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  },
+  
+  setKomunitiFilter(f) { this.state.komunitiFilter = f; this.render(); },
+  
+  openNewTopic() {
+    const user = Auth.current();
+    if (!user) return;
+    const canCompany = true;  // semua boleh post company-wide
+    showModal(`
+      <div class="modal-title">✏️ Topik Baru</div>
+      <div class="modal-sub">Kongsi dengan team anda</div>
+      
+      <div class="form-group" style="margin-top:16px;">
+        <label>Jenis</label>
+        <div id="nt-kind-chips" style="display:flex;gap:7px;flex-wrap:wrap;">
+          ${[['question','❓ Soalan'],['discuss','💬 Bincang'],['share','💡 Kongsi'],['announce','📢 Pengumuman']].map(([v,l],i) => 
+            `<button type="button" class="type-chip" data-value="${v}" data-active="${i===0?'1':'0'}" onclick="App.pickChip('nt-kind-chips', this)" style="padding:9px 14px;border:1.5px solid ${i===0?'var(--primary)':'var(--border)'};border-radius:10px;background:${i===0?'var(--primary)':'var(--cream)'};color:${i===0?'var(--accent)':'var(--ink-2)'};font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;transition:all 0.15s;">${l}</button>`
+          ).join('')}
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label>Tajuk</label>
+        <input type="text" id="nt-title" placeholder="Cth: Macam mana handle customer CTOS merah?" maxlength="120">
+      </div>
+      
+      <div class="form-group">
+        <label>Butiran</label>
+        <textarea id="nt-body" rows="4" placeholder="Terangkan dengan lebih lanjut..." style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:12px;font-family:inherit;font-size:14px;background:var(--cream);resize:vertical;"></textarea>
+      </div>
+      
+      <div class="form-group">
+        <label>Siapa boleh nampak?</label>
+        <div id="nt-scope-chips" style="display:flex;gap:7px;">
+          <button type="button" class="type-chip" data-value="branch" data-active="1" onclick="App.pickChip('nt-scope-chips', this)" style="flex:1;padding:10px;border:1.5px solid var(--primary);border-radius:10px;background:var(--primary);color:var(--accent);font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;">🏢 Branch saya</button>
+          <button type="button" class="type-chip" data-value="company" data-active="0" onclick="App.pickChip('nt-scope-chips', this)" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:10px;background:var(--cream);color:var(--ink-2);font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;">🌍 Semua Branch</button>
+        </div>
+      </div>
+      
+      <button class="submit-btn" onclick="App.submitNewTopic()">📤 Post Topik</button>
+      <button class="btn-secondary" onclick="hideModal()">Batal</button>
+    `);
+    setTimeout(() => document.getElementById('nt-title')?.focus(), 100);
+  },
+  
+  submitNewTopic() {
+    const title = document.getElementById('nt-title')?.value.trim();
+    const body = document.getElementById('nt-body')?.value.trim();
+    const kind = this.getChipValue('nt-kind-chips') || 'discuss';
+    const scope = this.getChipValue('nt-scope-chips') || 'branch';
+    if (!title) { toast('Sila isi tajuk'); return; }
+    const t = DB.addTopic({ title, body, kind, scope });
+    if (!t) { toast('Gagal post · cuba lagi'); return; }
+    hideModal();
+    toast('✅ Topik dipost!');
+    this.cheerPop('💬', 'Topik Dipost!', 'Team boleh sertai sekarang');
+    this.openTopic(t.id);
+  },
+  
+  openTopic(topicId) {
+    const user = Auth.current();
+    const t = DB.topic(topicId);
+    if (!t) { toast('Topik tak dijumpai'); return; }
+    const KIND = {
+      announce: { e: '📢', l: 'Pengumuman', c: '#B8860B' },
+      question: { e: '❓', l: 'Soalan', c: '#2563EB' },
+      discuss: { e: '💬', l: 'Bincang', c: '#1B6B43' },
+      share: { e: '💡', l: 'Kongsi', c: '#7C3AED' }
+    };
+    const k = KIND[t.kind] || KIND.discuss;
+    const isAuthor = t.author_id === user.id;
+    const canModerate = Permissions.canAnnounce(user) || isAuthor;  // author or mgmt
+    const resolved = t.kind === 'question' && t.status === 'resolved';
+    const fmtTime = iso => new Date(iso).toLocaleString('en-MY', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    
+    showModal(`
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:8px;">
+        <span style="background:${k.c};color:white;font-size:10px;font-weight:800;padding:3px 9px;border-radius:8px;">${k.e} ${k.l}</span>
+        ${t.scope === 'company' ? '<span style="background:var(--cream-3);color:var(--ink-2);font-size:9px;font-weight:800;padding:3px 8px;border-radius:7px;">🌍 Semua Branch</span>' : `<span style="background:var(--cream-2);color:var(--ink-3);font-size:9px;font-weight:700;padding:3px 8px;border-radius:7px;">🏢 ${esc(DB.branch(t.branch_id)?.name || '')}</span>`}
+        ${resolved ? '<span style="background:#DCFCE7;color:#16A34A;font-size:9px;font-weight:800;padding:3px 8px;border-radius:7px;">✅ Resolved</span>' : ''}
+      </div>
+      <div class="modal-title" style="${resolved ? 'opacity:0.6;' : ''}">${esc(t.title)}</div>
+      <div class="modal-sub">👤 ${esc(t.author_name)} · ${fmtTime(t.created_at)}</div>
+      ${t.body ? `<div style="font-size:14px;color:var(--ink);line-height:1.55;margin:12px 0;white-space:pre-wrap;">${esc(t.body)}</div>` : ''}
+      
+      ${(t.kind === 'question' && isAuthor) ? `
+        <div style="display:flex;gap:8px;margin:10px 0;">
+          ${!resolved ? `<button onclick="App.resolveTopic('${t.id}')" style="flex:1;padding:9px;border:1.5px solid #16A34A;border-radius:10px;background:#DCFCE7;color:#16A34A;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;">✅ Tandai Resolved</button>` : `<button onclick="App.reopenTopic('${t.id}')" style="flex:1;padding:9px;border:1.5px solid var(--border);border-radius:10px;background:var(--cream);color:var(--ink-2);font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;">↩️ Buka Semula</button>`}
+          <button onclick="App.confirmDeleteTopic('${t.id}')" style="padding:9px 14px;border:1.5px solid #FCA5A5;border-radius:10px;background:#FEE2E2;color:#991B1B;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;">🗑 Cancel</button>
+        </div>
+      ` : (canModerate ? `
+        <div style="margin:10px 0;">
+          <button onclick="App.confirmDeleteTopic('${t.id}')" style="padding:8px 14px;border:1.5px solid #FCA5A5;border-radius:10px;background:#FEE2E2;color:#991B1B;font-family:inherit;font-size:11px;font-weight:800;cursor:pointer;">🗑 Padam Topik</button>
+        </div>
+      ` : '')}
+      
+      <div style="border-top:1px solid var(--border);margin:14px 0 10px;padding-top:12px;">
+        <div style="font-size:12px;font-weight:800;color:var(--ink-2);text-transform:uppercase;letter-spacing:0.08em;">💬 ${(t.replies || []).length} Balasan</div>
+      </div>
+      
+      <div style="max-height:280px;overflow-y:auto;margin-bottom:12px;">
+        ${(t.replies || []).length === 0 ? '<div style="text-align:center;padding:20px;color:var(--ink-3);font-size:13px;">Belum ada balasan · jadi yang pertama!</div>' : t.replies.map(r => {
+          const mine = r.author_id === user.id;
+          const canDelR = mine || Permissions.canAnnounce(user);
+          return `
+            <div style="display:flex;flex-direction:column;align-items:${mine ? 'flex-end' : 'flex-start'};margin-bottom:10px;">
+              <div style="max-width:85%;background:${mine ? 'var(--primary)' : 'var(--cream-2)'};color:${mine ? 'white' : 'var(--ink)'};padding:9px 13px;border-radius:14px;${mine ? 'border-bottom-right-radius:4px;' : 'border-bottom-left-radius:4px;'}">
+                <div style="font-size:10px;font-weight:800;color:${mine ? 'var(--accent)' : 'var(--primary)'};margin-bottom:2px;">${esc(r.author_name.split(' ')[0])}${mine ? ' (anda)' : ''}</div>
+                <div style="font-size:13.5px;line-height:1.45;white-space:pre-wrap;">${esc(r.text)}</div>
+              </div>
+              <div style="font-size:9.5px;color:var(--ink-3);margin-top:3px;padding:0 4px;">
+                ${fmtTime(r.created_at)}
+                ${canDelR ? ` · <span onclick="App.deleteReplyConfirm('${t.id}','${r.id}')" style="color:#DC2626;cursor:pointer;font-weight:700;">padam</span>` : ''}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      
+      ${resolved ? '<div style="text-align:center;padding:10px;background:#DCFCE7;border-radius:12px;color:#16A34A;font-size:12px;font-weight:700;">✅ Soalan ni dah resolved</div>' : `
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+          <textarea id="reply-text" rows="1" placeholder="Tulis balasan..." style="flex:1;padding:11px 14px;border:1.5px solid var(--border);border-radius:14px;font-family:inherit;font-size:14px;background:var(--cream);resize:none;max-height:100px;" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px'"></textarea>
+          <button onclick="App.sendReply('${t.id}')" style="width:44px;height:44px;border-radius:50%;border:none;background:var(--primary);color:var(--accent);font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;">➤</button>
+        </div>
+      `}
+      <button class="btn-secondary" onclick="hideModal()" style="margin-top:12px;">Tutup</button>
+    `);
+    setTimeout(() => {
+      const ta = document.getElementById('reply-text');
+      if (ta) ta.focus();
+    }, 100);
+  },
+  
+  sendReply(topicId) {
+    const ta = document.getElementById('reply-text');
+    const text = ta?.value.trim();
+    if (!text) { toast('Tulis sesuatu dulu'); return; }
+    const r = DB.addReply(topicId, text);
+    if (!r) { toast('Gagal hantar'); return; }
+    this.openTopic(topicId);  // re-render modal with new reply
+    toast('✅ Balasan dihantar');
+  },
+  
+  resolveTopic(id) { DB.updateTopic(id, { status: 'resolved' }); this.cheerPop('✅', 'Resolved!', 'Terima kasih semua yang bantu 🙏'); this.openTopic(id); },
+  reopenTopic(id) { DB.updateTopic(id, { status: 'open' }); this.openTopic(id); },
+  
+  confirmDeleteTopic(id) {
+    const t = DB.topic(id);
+    showModal(`
+      <div class="modal-title">🗑 Padam Topik?</div>
+      <div class="modal-sub">"${esc(t?.title || '')}"</div>
+      <div style="font-size:13px;color:var(--ink-2);margin:14px 0;">Topik dan semua balasan akan dipadam terus. Tindakan ni tak boleh undo.</div>
+      <button class="submit-btn" style="background:#DC2626;" onclick="App.doDeleteTopic('${id}')">Ya, Padam</button>
+      <button class="btn-secondary" onclick="App.openTopic('${id}')">Batal</button>
+    `);
+  },
+  doDeleteTopic(id) { DB.deleteTopic(id); hideModal(); toast('🗑 Topik dipadam'); this.render(); },
+  
+  deleteReplyConfirm(topicId, replyId) {
+    DB.deleteReply(topicId, replyId);
+    this.openTopic(topicId);
+    toast('Balasan dipadam');
+  },
+  
   renderBottomNav(user, currentScreen) {
     let items = [];
     if (user.role === 'cs') {
@@ -10172,12 +10509,14 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
         { icon: 'list', label: 'Cases', screen: 'cs-cases' },
         { icon: 'target', label: 'Daily', screen: 'daily-report' },
         { icon: 'chart', label: 'Report', screen: 'cs-report' },
+        { icon: 'chat', label: 'Komuniti', screen: 'komuniti' },
       ];
 } else if (user.role === 'kerani') {
       // Admin (Kerani) - customer board + export
       items = [
         { icon: 'list', label: 'Customers', screen: 'admin-customers' },
         { icon: 'export', label: 'Export', screen: 'admin-export' },
+        { icon: 'chat', label: 'Komuniti', screen: 'komuniti' },
       ];
     } else if (Logic.isLeaderRole(user)) {
       items = [
@@ -10185,6 +10524,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
         { icon: 'list', label: 'Cases', screen: 'cs-cases' },
         { icon: 'target', label: 'Daily', screen: 'daily-report' },
         { icon: 'chart', label: 'Komisen', screen: 'leader-report' },
+        { icon: 'chat', label: 'Komuniti', screen: 'komuniti' },
       ];
     } else {
       // Boss / Manager
@@ -10194,6 +10534,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
         { icon: 'trophy', label: 'Ranking', screen: 'admin-rankings' },
         { icon: 'users', label: 'Staff', screen: 'admin-staff' },
         { icon: 'target', label: 'Daily Report', screen: 'admin-daily-report' },
+        { icon: 'chat', label: 'Komuniti', screen: 'komuniti' },
         ...(Permissions.canViewAllBranches(Auth.current()) ? [{ icon: 'compare', label: 'Branches', screen: 'admin-branch-compare' }] : []),
         { icon: 'tools', label: 'Tools', action: 'openAdminTools' },
         { icon: 'export', label: 'Export', screen: 'admin-export' },
@@ -10213,7 +10554,8 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
       tools: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>',
       export: '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
       logout: '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>',
-      lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>'
+      lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>',
+      chat: '<path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/>'
     };
     
     return `
@@ -10279,6 +10621,95 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
       
       <button class="btn-secondary" onclick="hideModal()" style="margin-top:14px;width:100%;">Close</button>
     `);
+  },
+  
+  // ============ 🎉 FESTIVALS + 🎂 BIRTHDAYS (visible to whole branch) ============
+  // Festival dates (MY). Fixed-date ones recur yearly; lunar ones need year-specific entries.
+  FESTIVALS: {
+    // Fixed Gregorian (MM-DD) — recur every year
+    fixed: {
+      '01-01': { e: '🎆', n: 'Tahun Baru', m: 'Selamat Tahun Baru! Semoga tahun ni penuh rezeki & kejayaan. 🎉', c: 'linear-gradient(135deg,#1e3a8a,#3b82f6)' },
+      '05-01': { e: '👷', n: 'Hari Pekerja', m: 'Selamat Hari Pekerja! Terima kasih atas kerja keras anda semua. 💪', c: 'linear-gradient(135deg,#b45309,#f59e0b)' },
+      '08-31': { e: '🇲🇾', n: 'Hari Merdeka', m: 'Selamat Hari Merdeka! Merdeka! Merdeka! Merdeka! 🎊', c: 'linear-gradient(135deg,#dc2626,#1e40af)' },
+      '09-16': { e: '🇲🇾', n: 'Hari Malaysia', m: 'Selamat Hari Malaysia! Bersatu kita teguh. 🤝', c: 'linear-gradient(135deg,#dc2626,#fbbf24)' },
+      '12-25': { e: '🎄', n: 'Krismas', m: 'Merry Christmas! Semoga gembira bersama keluarga. 🎁', c: 'linear-gradient(135deg,#15803d,#dc2626)' }
+    },
+    // Year-specific (lunar/Islamic/Hindu calendars) — YYYY-MM-DD. Update yearly.
+    dated: {
+      // 2026
+      '2026-01-29': { e: '🧧', n: 'Tahun Baru Cina', m: '恭喜发财! Gong Xi Fa Cai! Semoga makmur & sihat sepanjang tahun. 🧧', c: 'linear-gradient(135deg,#b91c1c,#dc2626,#fbbf24)' },
+      '2026-01-30': { e: '🧧', n: 'Tahun Baru Cina', m: '恭喜发财! Selamat Tahun Baru Cina hari kedua! 🧧', c: 'linear-gradient(135deg,#b91c1c,#dc2626,#fbbf24)' },
+      '2026-03-20': { e: '🌙', n: 'Hari Raya Aidilfitri', m: 'Selamat Hari Raya Aidilfitri! Maaf zahir & batin. 🌙✨', c: 'linear-gradient(135deg,#047857,#10b981,#fbbf24)' },
+      '2026-03-21': { e: '🌙', n: 'Hari Raya Aidilfitri', m: 'Selamat Hari Raya! Maaf zahir & batin. 🌙✨', c: 'linear-gradient(135deg,#047857,#10b981,#fbbf24)' },
+      '2026-05-27': { e: '🌸', n: 'Hari Wesak', m: 'Happy Wesak Day! Semoga damai & bahagia. 🪷', c: 'linear-gradient(135deg,#d97706,#fbbf24)' },
+      '2026-05-27b': { e: '🐄', n: 'Hari Raya Aidiladha', m: 'Selamat Hari Raya Aidiladha! Semoga berkat. 🌙', c: 'linear-gradient(135deg,#047857,#10b981)' },
+      '2026-06-16': { e: '🕌', n: 'Awal Muharram', m: 'Salam Maal Hijrah! Semoga tahun baru Islam penuh keberkatan. 🕌', c: 'linear-gradient(135deg,#065f46,#059669)' },
+      '2026-08-25': { e: '🕌', n: 'Maulidur Rasul', m: 'Salam Maulidur Rasul. 🕌', c: 'linear-gradient(135deg,#065f46,#059669)' },
+      '2026-11-08': { e: '🪔', n: 'Deepavali', m: 'Happy Deepavali! Semoga cahaya mengatasi kegelapan. 🪔✨', c: 'linear-gradient(135deg,#7c3aed,#db2777,#f59e0b)' },
+      // Thaipusam 2026
+      '2026-02-01': { e: '🛕', n: 'Thaipusam', m: 'Happy Thaipusam! 🛕', c: 'linear-gradient(135deg,#ea580c,#f59e0b)' }
+    }
+  },
+  
+  todayFestival() {
+    const now = new Date();
+    const md = String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+    const ymd = now.toISOString().slice(0, 10);
+    // dated takes priority (handle the 'b' suffix duplicate-day entries)
+    for (const [k, v] of Object.entries(this.FESTIVALS.dated)) {
+      if (k.startsWith(ymd)) return v;
+    }
+    return this.FESTIVALS.fixed[md] || null;
+  },
+  
+  // Whose birthday is today in this user's visible scope (branch, or all for Boss)
+  todayBirthdays(user) {
+    const md = new Date().toISOString().slice(5, 10);  // MM-DD
+    const scopeAll = Permissions.canViewAllBranches(user);
+    return DB.users().filter(u => {
+      if (u.inactive) return false;
+      if (!scopeAll && u.branch_id !== user.branch_id) return false;
+      const dob = this.icToDob(u.staff_ic);
+      return dob && dob.slice(5) === md;
+    });
+  },
+  
+  renderDayBanners(user) {
+    let html = '';
+    
+    // 🎂 Birthdays — whole branch sees it
+    const bdays = this.todayBirthdays(user);
+    if (bdays.length) {
+      const names = bdays.map(u => esc(u.name.split(' ')[0])).join(', ');
+      const isMe = bdays.some(u => u.id === user.id);
+      html += `
+        <div style="margin:14px 20px 0;padding:14px 16px;background:linear-gradient(135deg,#B8860B,#DAA520 55%,#F5C518);border-radius:16px;position:relative;overflow:hidden;box-shadow:0 12px 32px rgba(218,165,32,0.32);animation:cardRise 0.5s both;">
+          <div style="position:absolute;top:-30px;right:-20px;font-size:90px;opacity:0.18;">🎂</div>
+          <div style="position:relative;">
+            <div style="font-size:10px;color:rgba(255,255,255,0.9);text-transform:uppercase;letter-spacing:0.14em;font-weight:800;">🎂 Hari Jadi Hari Ini</div>
+            <div style="font-family:'Fraunces',serif;font-size:19px;font-weight:700;color:white;margin-top:4px;">${isMe ? 'Selamat Hari Jadi, ' + names + '! 🥳' : names + ' birthday hari ni! 🎉'}</div>
+            <div style="font-size:12px;color:rgba(255,255,255,0.92);margin-top:3px;font-weight:600;">${isMe ? 'Semoga panjang umur & murah rezeki! 🎈' : 'Jangan lupa wish dia ya~ 🎁'}</div>
+          </div>
+        </div>
+      `;
+    }
+    
+    // 🎉 Festival
+    const fest = this.todayFestival();
+    if (fest) {
+      html += `
+        <div style="margin:14px 20px 0;padding:14px 16px;background:${fest.c};border-radius:16px;position:relative;overflow:hidden;box-shadow:0 12px 32px rgba(0,0,0,0.22);animation:cardRise 0.5s 0.05s both;">
+          <div style="position:absolute;top:-26px;right:-14px;font-size:84px;opacity:0.2;">${fest.e}</div>
+          <div style="position:relative;">
+            <div style="font-size:10px;color:rgba(255,255,255,0.92);text-transform:uppercase;letter-spacing:0.14em;font-weight:800;">${fest.e} ${esc(fest.n)}</div>
+            <div style="font-size:14px;color:white;margin-top:5px;font-weight:700;line-height:1.45;">${esc(fest.m)}</div>
+            <div style="font-size:10px;color:rgba(255,255,255,0.75);margin-top:6px;font-weight:600;">— Daripada keluarga besar AWARA 💚</div>
+          </div>
+        </div>
+      `;
+    }
+    
+    return html;
   },
   
   renderAnnouncementBanner() {
