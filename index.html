@@ -1563,6 +1563,7 @@ const DB = {
     settings: 'awara_settings', branches: 'awara_branches',
     notifications: 'awara_notifications', loginAttempts: 'awara_login_attempts',
     attendance: 'awara_attendance',
+    targets: 'awara_targets',
   },
   
   // ============ IN-MEMORY CACHE (Performance) ============
@@ -2048,6 +2049,25 @@ cases[idx] = { ...before, ...updates };
       medical_used: medical, medical_total: policy.medical_days, medical_remaining: Math.max(0, policy.medical_days - medical),
       emergency_used: emergency, emergency_total: policy.emergency_days, emergency_remaining: Math.max(0, policy.emergency_days - emergency)
     };
+  },
+
+  // ========== MONTHLY KPI TARGETS ==========
+  targets() { return this.get(this.K.targets, []); },
+  getTarget(userId, ym) {
+    return this.targets().find(t => t.user_id === userId && t.ym === ym) || null;
+  },
+  setTarget(userId, ym, vals) {
+    const ts = this.targets();
+    const idx = ts.findIndex(t => t.user_id === userId && t.ym === ym);
+    const rec = { user_id: userId, ym, ...vals };
+    if (idx >= 0) ts[idx] = rec; else ts.push(rec);
+    this.set(this.K.targets, ts);
+    if (window.Cloud?.connected) window.Cloud.setDoc('targets', `${userId}_${ym}`, rec);
+  },
+  deleteTarget(userId, ym) {
+    const ts = this.targets().filter(t => !(t.user_id === userId && t.ym === ym));
+    this.set(this.K.targets, ts);
+    if (window.Cloud?.connected) window.Cloud.deleteDoc('targets', `${userId}_${ym}`);
   },
 
   // Customer notes
@@ -3747,6 +3767,9 @@ const App = {
         content = this.renderDailyReportDashboard(user); break;
       case 'kehadiran': content = this.renderKehadiran(user); break;
       case 'admin-kehadiran': content = this.renderAdminKehadiran(user); break;
+      case 'admin-targets':
+        if (!Permissions.isAdminLevel(user)) { content = this.renderAdminDashboard(user); break; }
+        content = this.renderAdminTargets(user); break;
       case 'admin-settings': 
         if (!Permissions.canEditSettings(user)) { content = this.renderAdminDashboard(user); break; }
         content = this.renderAdminSettings(user); break;
@@ -4104,7 +4127,9 @@ this.bindCommonEvents();
       
       ${(() => {
         // 🎯 Monthly KPI progress ring
-        const target = 10;  // KPI target per month
+        const currentYM = new Date().toISOString().slice(0,7);
+        const tgt = DB.getTarget(user.id, currentYM);
+        const target = tgt?.submit || 10;
         const kpi = stats.submitted;
         const pct = Math.min(1, kpi / target);
         const hit = kpi >= target;
@@ -5846,9 +5871,10 @@ ${stage2Done && canProcessStage2 ? (
     const selectedYM = this.state.selectedMonth || new Date().toISOString().slice(0,7);
     const isCurrentMonth = selectedYM === new Date().toISOString().slice(0,7);
     const stats = isCurrentMonth ? Logic.csStats(user.id) : Logic.csStatsForMonth(user.id, selectedYM);
-    const com = isCurrentMonth ? Logic.csCommission(user.id) : null;
+    const com = Logic.csCommission(user.id, selectedYM);
     const months = Logic.availableMonths();
-    
+    const monthTarget = DB.getTarget(user.id, selectedYM);
+
     // Add inProgress / newCount for non-current months
     if (!isCurrentMonth) {
       stats.inProgress = stats.cases.filter(c => ['contacted', 'proposed'].includes(c.status)).length;
@@ -5874,9 +5900,25 @@ ${stage2Done && canProcessStage2 ? (
       </div>
       
       <div class="info-banner">
-        <strong>${isCurrentMonth ? 'Current month performance.' : 'Historical view · commission locked.'}</strong> ${isCurrentMonth ? 'Commission auto-calculated.' : 'Past month data, read-only.'}
+        <strong>${isCurrentMonth ? 'Current month performance.' : 'Historical · data read-only.'}</strong> Komisen dikira berdasarkan cases bulan ini.
       </div>
-      
+
+      ${monthTarget ? `
+      <div style="margin: 4px 20px 12px; padding: 12px 14px; background: var(--cream-2); border-radius: 14px; border: 1px solid var(--border-2);">
+        <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-3); margin-bottom: 8px;">🎯 Target Bulan Ini</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          ${monthTarget.payslip ? `<div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;"><span style="color:var(--ink-3);">Payslip</span><span style="font-weight:800;color:${stats.total>=monthTarget.payslip?'var(--success)':'var(--ink)'};">${stats.total}/${monthTarget.payslip}</span></div>
+            <div style="background:var(--cream);height:6px;border-radius:4px;overflow:hidden;"><div style="background:${stats.total>=monthTarget.payslip?'var(--success)':'var(--primary)'};width:${Math.min(100,(stats.total/monthTarget.payslip)*100)}%;height:100%;border-radius:4px;"></div></div>
+          </div>` : ''}
+          ${monthTarget.submit ? `<div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;"><span style="color:var(--ink-3);">Submit KPI</span><span style="font-weight:800;color:${stats.submitted>=monthTarget.submit?'var(--success)':'var(--ink)'};">${stats.submitted}/${monthTarget.submit}</span></div>
+            <div style="background:var(--cream);height:6px;border-radius:4px;overflow:hidden;"><div style="background:${stats.submitted>=monthTarget.submit?'var(--success)':'var(--primary)'};width:${Math.min(100,(stats.submitted/monthTarget.submit)*100)}%;height:100%;border-radius:4px;"></div></div>
+          </div>` : ''}
+        </div>
+      </div>
+      ` : ''}
+
       <div class="section-header"><div class="section-title">Funnel Visualization</div></div>
       <div style="padding: 0 20px;">
         <div style="background: var(--cream-2); border-radius: 14px; padding: 16px; border: 1px solid var(--border-2);">
@@ -5908,16 +5950,16 @@ ${stage2Done && canProcessStage2 ? (
         <div class="stat-row danger"><span class="stat-label">Rejected</span><span class="stat-value">${stats.rejected}</span></div>
       </div>
       
-      ${isCurrentMonth && com ? `
-        <div class="section-header"><div class="section-title">Komisen Breakdown</div></div>
-        
+      ${com ? `
+        <div class="section-header"><div class="section-title">Komisen Breakdown${!isCurrentMonth ? ' · ' + new Date(selectedYM+'-01').toLocaleDateString('en-MY',{month:'long',year:'numeric'}) : ''}</div></div>
+
         <div class="commission-card ${com.psCom > 0 ? 'earned' : ''}">
           <div class="com-header">
             <div class="com-title">Payslip Komisen</div>
             <div class="com-amount"><span class="unit">RM</span>${fmt(com.psCom)}</div>
           </div>
           <div class="com-sub">${stats.total} payslip ${com.psTier ? '× RM ' + com.psRate.toFixed(2) + '/PS' : '· belum capai tier minimum (65)'}</div>
-          ${com.psNext ? `<div class="com-progress"><strong>${com.psNext.need} lagi payslip</strong> untuk capai tier RM ${com.psNext.rate.toFixed(2)}/PS</div>` : ''}
+          ${isCurrentMonth && com.psNext ? `<div class="com-progress"><strong>${com.psNext.need} lagi payslip</strong> untuk capai tier RM ${com.psNext.rate.toFixed(2)}/PS</div>` : ''}
           <div class="tier-table">
             ${CS_PAYSLIP_TIERS.slice().reverse().map(t => `
               <div class="tier-row ${com.psTier && com.psTier.min === t.min ? 'active' : ''}">
@@ -5927,14 +5969,14 @@ ${stage2Done && canProcessStage2 ? (
             `).join('')}
           </div>
         </div>
-        
+
         <div class="commission-card ${com.smCom > 0 ? 'earned' : ''}">
           <div class="com-header">
             <div class="com-title">Submit Komisen</div>
             <div class="com-amount"><span class="unit">RM</span>${fmt(com.smCom)}</div>
           </div>
           <div class="com-sub">${stats.submitted} cases submitted ${com.smTier ? '× RM ' + com.smRate + '/case' : '· belum capai 7 submission'}</div>
-          ${com.smNext ? `<div class="com-progress"><strong>${com.smNext.need} lagi submission</strong> untuk capai tier RM ${com.smNext.rate}/case</div>` : ''}
+          ${isCurrentMonth && com.smNext ? `<div class="com-progress"><strong>${com.smNext.need} lagi submission</strong> untuk capai tier RM ${com.smNext.rate}/case</div>` : ''}
           <div class="tier-table">
             ${CS_SUBMIT_TIERS.slice().reverse().map(t => `
               <div class="tier-row ${com.smTier && com.smTier.min === t.min ? 'active' : ''}">
@@ -5944,24 +5986,58 @@ ${stage2Done && canProcessStage2 ? (
             `).join('')}
           </div>
         </div>
-        
+
         <div class="stats-list">
-          <div class="stat-row highlight"><span class="stat-label">Total Komisen Bulan Ini</span><span class="stat-value"><span class="unit">RM</span>${fmt(com.total)}</span></div>
+          <div class="stat-row highlight"><span class="stat-label">Total Komisen</span><span class="stat-value"><span class="unit">RM</span>${fmt(com.total)}</span></div>
         </div>
-      ` : `
-        <div class="info-banner info">
-          <strong>Historical view.</strong> Komisen calculation only shown for current month.
-        </div>
-      `}
+      ` : ''}
       
       <div class="section-header"><div class="section-title">Rejected / Lost</div></div>
       <div class="stats-list">
         <div class="stat-row danger"><span class="stat-label">Rejected Cases</span><span class="stat-value">${stats.rejected}</span></div>
         <div class="stat-row danger"><span class="stat-label">Potential Lost</span><span class="stat-value"><span class="unit">RM</span>${fmt(stats.lostAmount)}</span></div>
       </div>
+
+      ${(() => {
+        // 📈 6-month performance trend sparkline
+        const trend = months.slice(0, 6).reverse().map(ym => {
+          const s = Logic.csStatsForMonth(user.id, ym);
+          return { ym, total: s.total, submitted: s.submitted };
+        });
+        const maxPS = Math.max(...trend.map(t => t.total), 1);
+        const maxSM = Math.max(...trend.map(t => t.submitted), 1);
+        const W = 280, H = 80, pad = 10;
+        const drawLine = (vals, max, color) => {
+          const pts = vals.map((v, i) => {
+            const x = pad + (i / (vals.length - 1)) * (W - 2 * pad);
+            const y = H - pad - ((v / max) * (H - 2 * pad));
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
+          });
+          return `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            ${pts.map((p, i) => `<circle cx="${p.split(',')[0]}" cy="${p.split(',')[1]}" r="3.5" fill="${color}"/>
+              <text x="${p.split(',')[0]}" y="${(parseFloat(p.split(',')[1])-7).toFixed(0)}" text-anchor="middle" font-size="9" fill="${color}" font-weight="800">${vals[i]}</text>`).join('')}`;
+        };
+        return `
+          <div class="section-header"><div class="section-title">📈 6 Bulan Trend</div></div>
+          <div style="margin:4px 20px 14px;background:var(--cream-2);border-radius:14px;padding:14px 16px;border:1px solid var(--border-2);">
+            <div style="display:flex;gap:12px;margin-bottom:8px;">
+              <div style="display:flex;align-items:center;gap:4px;font-size:10px;font-weight:700;color:var(--primary);">● Payslip</div>
+              <div style="display:flex;align-items:center;gap:4px;font-size:10px;font-weight:700;color:#0891B2;">● Submit</div>
+            </div>
+            <svg width="100%" viewBox="0 0 ${W} ${H+20}" style="overflow:visible;">
+              ${drawLine(trend.map(t=>t.total), maxPS, 'var(--primary)')}
+              ${drawLine(trend.map(t=>t.submitted), maxSM, '#0891B2')}
+              ${trend.map((t,i) => {
+                const x = pad + (i/(trend.length-1))*(W-2*pad);
+                return `<text x="${x.toFixed(1)}" y="${H+16}" text-anchor="middle" font-size="9" fill="var(--ink-3)" font-weight="700">${new Date(t.ym+'-01').toLocaleDateString('en-MY',{month:'short'})}</text>`;
+              }).join('')}
+            </svg>
+          </div>
+        `;
+      })()}
     `;
   },
-  
+
   setMonth(ym) {
     this.state.selectedMonth = ym;
     this.render();
@@ -6117,12 +6193,31 @@ ${stage2Done && canProcessStage2 ? (
   
   // ============ LEADER REPORT (Commission) ============
   renderLeaderReport(user) {
-    const com = Logic.leaderCommission(user.id);
+    const months = Logic.availableMonths();
+    const selectedYM = this.state.leaderReportMonth || new Date().toISOString().slice(0,7);
+    const isCurrentMonth = selectedYM === new Date().toISOString().slice(0,7);
+    const com = Logic.leaderCommission(user.id, selectedYM);
     const tiers = com.tiers;
     const stats = com.stats;
     const isSolo = user.role === 'solo';
-    
+    const monthTarget = DB.getTarget(user.id, selectedYM);
+
     return this.topBar(user, 'Commission Report') + `
+      <div class="filter-bar">
+        ${months.slice(0, 6).map(ym => {
+          const d = new Date(ym + '-01');
+          const label = d.toLocaleDateString('en-MY', { month: 'short', year: '2-digit' });
+          return `<div class="filter-chip ${selectedYM === ym ? 'active' : ''}" onclick="App.state.leaderReportMonth='${ym}';App.render();">${label}${ym === new Date().toISOString().slice(0,7) ? ' (Now)' : ''}</div>`;
+        }).join('')}
+      </div>
+
+      ${monthTarget && monthTarget.kfi ? `
+      <div style="margin: 4px 20px 12px; padding: 12px 14px; background: var(--cream-2); border-radius: 14px; border: 1px solid var(--border-2);">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:var(--ink-3);margin-bottom:8px;">🎯 Target KFI Bulan Ini</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span style="color:var(--ink-3);">KFI Disburse</span><span style="font-weight:800;color:${stats.kfiAmount>=monthTarget.kfi?'var(--success)':'var(--ink)'};">${fmtRM(stats.kfiAmount)} / ${fmtRM(monthTarget.kfi)}</span></div>
+        <div style="background:var(--cream);height:8px;border-radius:4px;overflow:hidden;"><div style="background:${stats.kfiAmount>=monthTarget.kfi?'var(--success)':'var(--primary)'};width:${Math.min(100,(stats.kfiAmount/monthTarget.kfi)*100)}%;height:100%;border-radius:4px;transition:width 0.5s;"></div></div>
+      </div>` : ''}
+
       <div class="info-banner">
         <strong>PENTING:</strong> KFI dikira berdasarkan jumlah DISBURSE sahaja. Approved tapi belum disburse TIDAK dikira.
       </div>
@@ -9615,6 +9710,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
       
       <div style="margin-top:14px;">
         ${toolButton('📢', 'Post Announcement', 'Hantar pengumuman kepada semua staff', 'admin-announcements', '#3B82F6', !canAnnounce)}
+        ${toolButton('🎯', 'Monthly Targets', 'Set KPI targets per staff per month', 'admin-targets', '#7C3AED')}
         ${toolButton('🏦', 'Manage Koperasi', 'Tambah/edit loan packages & faedah', 'admin-koperasi', '#F59E0B', !canKoperasi)}
         ${toolButton('⚙️', 'System Settings', 'KPI tiers, daily targets, commission rules', 'admin-settings', '#DC2626', !canSettings)}
       </div>
@@ -11278,6 +11374,130 @@ const managerUser = DB.users().find(u => u.role === 'manager' && u.branch_id ===
     toast(`Report downloaded: ${filename}`);
   },
   
+  // ============ ADMIN TARGETS SCREEN ============
+  renderAdminTargets(user) {
+    const months = Logic.availableMonths();
+    const currentYM = new Date().toISOString().slice(0,7);
+    const selectedYM = this.state.targetsMonth || currentYM;
+    const canPickBranch = Permissions.canViewAllBranches(user) || user.role === 'admin';
+    const selectedBranch = canPickBranch ? (this.state.targetsBranch || 'all') : user.branch_id;
+    const branches = DB.branches().filter(b => b.id !== 'hq');
+
+    let staffList = DB.users().filter(u => !u.inactive && ['cs','leader','solo'].includes(u.role));
+    if (selectedBranch !== 'all') staffList = staffList.filter(u => u.branch_id === selectedBranch);
+
+    const monthName = new Date(selectedYM+'-01').toLocaleDateString('en-MY',{month:'long',year:'numeric'});
+
+    return this.topBar(user, 'Monthly Targets', 'Set KPI targets per staff') + `
+      <!-- Controls -->
+      <div style="padding:12px 20px 4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <select onchange="App.state.targetsMonth=this.value;App.render();" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;font-weight:700;">
+          ${months.slice(0,12).map(ym=>`<option value="${ym}" ${selectedYM===ym?'selected':''}>${new Date(ym+'-01').toLocaleDateString('en-MY',{month:'short',year:'numeric'})}</option>`).join('')}
+        </select>
+        ${canPickBranch ? `
+          <select onchange="App.state.targetsBranch=this.value;App.render();" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;font-weight:700;">
+            <option value="all" ${selectedBranch==='all'?'selected':''}>All Branches</option>
+            ${branches.map(b=>`<option value="${b.id}" ${selectedBranch===b.id?'selected':''}>${b.name}</option>`).join('')}
+          </select>
+        ` : ''}
+      </div>
+
+      <div class="info-banner info" style="margin:0 20px 8px;">
+        <strong>Set KPI targets</strong> untuk ${monthName}. Targets akan muncul pada dashboard masing-masing sebagai progress ring.
+      </div>
+
+      <!-- Staff target cards -->
+      <div style="padding:0 20px 80px;">
+        ${staffList.map(u => {
+          const tgt = DB.getTarget(u.id, selectedYM) || {};
+          const stats = u.role === 'cs' ? Logic.csStats(u.id, selectedYM) : null;
+          const lStats = ['leader','solo'].includes(u.role) ? Logic.leaderStats(u.id, selectedYM) : null;
+          const actual_payslip = stats ? stats.total : 0;
+          const actual_submit = stats ? stats.submitted : (lStats ? (lStats.submitCases||[]).length : 0);
+          const actual_kfi = lStats ? lStats.kfiAmount : 0;
+
+          return `<div class="qa-card" style="margin-bottom:12px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+              <div style="width:38px;height:38px;border-radius:10px;background:var(--primary);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0;">${initials(u.name)}</div>
+              <div>
+                <div style="font-size:15px;font-weight:800;color:var(--ink);">${esc(u.name)}</div>
+                <div style="font-size:10px;color:var(--ink-3);font-weight:600;">${ROLE_LABELS[u.role]||u.role} · ${DB.branch(u.branch_id)?.name||''}</div>
+              </div>
+            </div>
+
+            ${u.role === 'cs' ? `
+            <div class="form-row">
+              <div class="form-group">
+                <label>Target Payslip</label>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <input type="number" min="0" max="999" value="${tgt.payslip||''}" placeholder="e.g. 80"
+                    oninput="App.updateTargetDraft('${u.id}','${selectedYM}','payslip',parseInt(this.value)||0)"
+                    style="flex:1;padding:10px 12px;border:1px solid var(--border-2);border-radius:10px;font-family:inherit;font-size:14px;font-weight:700;">
+                  <div style="font-size:11px;color:${actual_payslip>=(tgt.payslip||0)?'var(--success)':'var(--ink-3)'};font-weight:700;min-width:40px;text-align:right;">${actual_payslip} ada</div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Target Submit KPI</label>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <input type="number" min="0" max="200" value="${tgt.submit||''}" placeholder="e.g. 12"
+                    oninput="App.updateTargetDraft('${u.id}','${selectedYM}','submit',parseInt(this.value)||0)"
+                    style="flex:1;padding:10px 12px;border:1px solid var(--border-2);border-radius:10px;font-family:inherit;font-size:14px;font-weight:700;">
+                  <div style="font-size:11px;color:${actual_submit>=(tgt.submit||0)?'var(--success)':'var(--ink-3)'};font-weight:700;min-width:40px;text-align:right;">${actual_submit} ada</div>
+                </div>
+              </div>
+            </div>
+            ` : `
+            <div class="form-group">
+              <label>Target KFI Disburse (RM)</label>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <input type="number" min="0" step="1000" value="${tgt.kfi||''}" placeholder="e.g. 320000"
+                  oninput="App.updateTargetDraft('${u.id}','${selectedYM}','kfi',parseInt(this.value)||0)"
+                  style="flex:1;padding:10px 12px;border:1px solid var(--border-2);border-radius:10px;font-family:inherit;font-size:14px;font-weight:700;">
+                <div style="font-size:11px;color:${actual_kfi>=(tgt.kfi||0)?'var(--success)':'var(--ink-3)'};font-weight:700;min-width:60px;text-align:right;">RM ${fmtK(actual_kfi)} ada</div>
+              </div>
+            </div>
+            `}
+
+            <div style="display:flex;gap:8px;margin-top:4px;">
+              <button onclick="App.saveStaffTarget('${u.id}','${selectedYM}')" style="flex:1;background:var(--primary);color:white;border:none;padding:10px;border-radius:10px;font-family:inherit;font-weight:800;font-size:12px;cursor:pointer;">💾 Save Target</button>
+              ${tgt.payslip||tgt.submit||tgt.kfi ? `<button onclick="App.clearStaffTarget('${u.id}','${selectedYM}')" style="background:transparent;border:1px solid rgba(184,66,58,0.3);color:var(--danger);padding:10px 14px;border-radius:10px;font-family:inherit;font-weight:700;font-size:12px;cursor:pointer;">Clear</button>` : ''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    `;
+  },
+
+  // target draft (in-memory edits before save)
+  _targetDraft: {},
+  updateTargetDraft(userId, ym, field, val) {
+    const key = `${userId}_${ym}`;
+    if (!this._targetDraft[key]) {
+      const existing = DB.getTarget(userId, ym) || {};
+      this._targetDraft[key] = { ...existing };
+    }
+    this._targetDraft[key][field] = val;
+  },
+  saveStaffTarget(userId, ym) {
+    const key = `${userId}_${ym}`;
+    const draft = this._targetDraft[key];
+    const existing = DB.getTarget(userId, ym) || {};
+    const merged = { ...existing, ...draft };
+    // Remove zero/empty fields
+    ['payslip','submit','kfi'].forEach(f => { if (!merged[f]) delete merged[f]; });
+    if (Object.keys(merged).length === 0) { DB.deleteTarget(userId, ym); }
+    else DB.setTarget(userId, ym, merged);
+    delete this._targetDraft[key];
+    toast(`✓ Target disimpan untuk ${DB.user(userId)?.name || userId}`);
+  },
+  clearStaffTarget(userId, ym) {
+    if (!confirm('Clear target untuk staff ini?')) return;
+    DB.deleteTarget(userId, ym);
+    delete this._targetDraft[`${userId}_${ym}`];
+    toast('✓ Target dipadam');
+    this.render();
+  },
+
   // ============ KEHADIRAN (ATTENDANCE) SCREEN ============
   renderKehadiran(user) {
     const today = new Date().toISOString().slice(0,10);
