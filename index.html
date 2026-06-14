@@ -4248,7 +4248,7 @@ this.bindCommonEvents();
                           c.case_type === 'resubmit' ? `<span class="badge" style="background: var(--info-bg); color: var(--info);">Resubmit</span>` : '';
     
     const employerBadge = c.employer_type ? `<span class="badge" style="background: var(--primary); color: var(--accent); font-weight: 800;">${c.employer_type}</span>` : '';
-    const custTypeBadge = c.customer_type === 'special' ? `<span class="badge" style="background: linear-gradient(135deg, #B8860B, #DAA520); color: white; font-weight: 800;">⭐ Special</span>` : '';
+    const custTypeBadge = c.customer_type === 'special' ? `<span class="badge" style="background: linear-gradient(135deg, #B8860B, #DAA520); color: white; font-weight: 800;">Special</span>` : '';
     
     // Subtitle: for new cases show salary info; for processed cases show package
     let subtitle = '';
@@ -4385,7 +4385,7 @@ if (isLeader && (this.state.tabState.cases || 'mine') === 'team') {
           `<div class="filter-chip ${(this.state.filterState.csEmployer || 'all') === t ? 'active' : ''}" onclick="App.setFilter('csEmployer','${t}')">${t === 'all' ? 'All Majikan' : '🏛 ' + t}</div>`
         ).join('')}
         <div style="width: 1px; background: var(--border); margin: 2px 4px;"></div>
-        ${[['all','All Kategori'],['normal','Normal'],['special','⭐ Special']].map(([v,l]) => 
+        ${[['all','All Kategori'],['normal','Normal'],['special','Special']].map(([v,l]) => 
           `<div class="filter-chip ${(this.state.filterState.csCustType || 'all') === v ? 'active' : ''}" onclick="App.setFilter('csCustType','${v}')">${l}</div>`
         ).join('')}
       </div>
@@ -4475,7 +4475,7 @@ setSearchCS(val) {
       ${c.employer_type || c.customer_type ? `
         <div style="display: flex; gap: 6px; margin: 6px 0 10px;">
           ${c.employer_type ? `<span style="background: var(--primary); color: var(--accent); font-size: 10px; padding: 4px 10px; border-radius: 8px; font-weight: 800; letter-spacing: 0.08em;">🏛 ${c.employer_type}</span>` : ''}
-          ${c.customer_type ? `<span style="background: ${c.customer_type === 'special' ? 'linear-gradient(135deg, #B8860B, #DAA520)' : 'var(--cream-2)'}; color: ${c.customer_type === 'special' ? 'white' : 'var(--ink-2)'}; font-size: 10px; padding: 4px 10px; border-radius: 8px; font-weight: 800; letter-spacing: 0.08em; ${c.customer_type === 'normal' ? 'border: 1px solid var(--border);' : ''}">${c.customer_type === 'special' ? '⭐ SPECIAL' : 'NORMAL'}</span>` : ''}
+          ${c.customer_type ? `<span style="background: ${c.customer_type === 'special' ? 'linear-gradient(135deg, #B8860B, #DAA520)' : 'var(--cream-2)'}; color: ${c.customer_type === 'special' ? 'white' : 'var(--ink-2)'}; font-size: 10px; padding: 4px 10px; border-radius: 8px; font-weight: 800; letter-spacing: 0.08em; ${c.customer_type === 'normal' ? 'border: 1px solid var(--border);' : ''}">${c.customer_type === 'special' ? 'SPECIAL' : 'NORMAL'}</span>` : ''}
         </div>
       ` : ''}
       ${this.statusStepper(c)}
@@ -8770,7 +8770,7 @@ if (!Permissions.canViewAllBranches(user)) {
           `<div class="filter-chip ${(this.state.filterState.adminCustEmployer || 'all') === t ? 'active' : ''}" onclick="App.setFilter('adminCustEmployer','${t}')">${t === 'all' ? 'All Majikan' : '🏛 ' + t}</div>`
         ).join('')}
         <div style="width: 1px; background: var(--border); margin: 2px 4px;"></div>
-        ${[['all','All Kategori'],['normal','Normal'],['special','⭐ Special']].map(([v,l]) => 
+        ${[['all','All Kategori'],['normal','Normal'],['special','Special']].map(([v,l]) => 
           `<div class="filter-chip ${(this.state.filterState.adminCustType || 'all') === v ? 'active' : ''}" onclick="App.setFilter('adminCustType','${v}')">${l}</div>`
         ).join('')}
       </div>
