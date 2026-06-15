@@ -2813,11 +2813,20 @@ const Logic = {
     return DB.users().find(u => u.role === 'manager' && !u.inactive);
   },
   
-  // Transfer all cases owned by a user (CS or Leader) to the Manager
-  // Used when a staff resigns - returns count of cases transferred
+  // Transfer all cases owned by a resigning user.
+  // CS cases → their team Leader (if active); else → Manager.
+  // Leader/Solo cases → Manager (their CS team gets re-pointed separately).
   transferCasesFromUserToManager(userId) {
     const manager = this.findManager();
-    if (!manager) return { ok: false, count: 0, error: 'No active Manager found' };
+    const resignee = DB.user(userId);
+    // CS's leader (only valid if active leader/solo)
+    let csLeader = null;
+    if (resignee?.leader_id) {
+      const L = DB.user(resignee.leader_id);
+      if (L && !L.inactive && ['leader', 'solo'].includes(L.role)) csLeader = L;
+    }
+    // Need at least one valid recipient
+    if (!manager && !csLeader) return { ok: false, count: 0, error: 'No active Manager found' };
     
     const allCases = DB.cases();
     const now = Date.now();
@@ -2828,20 +2837,23 @@ const Logic = {
       let changed = false;
       const newCase = { ...c };
       
-      // CS resigning - transfer their cases (where they collected the payslip)
+      // CS resigning → cases they collected go to their LEADER (fallback Manager)
       if (c.source_cs_id === userId) {
-        newCase.source_cs_id = manager.id;
+        const recipient = csLeader || manager;
+        newCase.source_cs_id = recipient.id;
         newCase.transferred_from_cs = userId;
         newCase.transferred_at = now;
         changed = true;
       }
       
-      // Leader/Solo resigning - transfer their team's cases
+      // Leader/Solo resigning → their team's cases go to Manager
       if (c.leader_id === userId) {
-        newCase.leader_id = manager.id;
-        newCase.transferred_from_leader = userId;
-        newCase.transferred_at = now;
-        changed = true;
+        if (manager) {
+          newCase.leader_id = manager.id;
+          newCase.transferred_from_leader = userId;
+          newCase.transferred_at = now;
+          changed = true;
+        }
       }
       
       if (changed) {
@@ -9343,6 +9355,17 @@ if (currentUser.role === 'hq' && u.role === 'admin') {
         <input type="text" id="eu-fullname" value="${esc(u.full_name || '')}" placeholder="Nama penuh rasmi">
       </div>
       
+      <div class="form-row">
+        <div class="form-group">
+          <label>📅 Tarikh Masuk (Join)</label>
+          <input type="date" id="eu-join-date" value="${u.join_date || ''}">
+        </div>
+        <div class="form-group">
+          <label>🚪 Tarikh Resign</label>
+          <input type="date" id="eu-resign-date" value="${u.resign_date || ''}">
+        </div>
+      </div>
+      
       <div class="form-group">
         <label>No. IC (12 digit · birthday auto-detect)</label>
         <input type="tel" id="eu-ic" value="${esc(u.staff_ic || '')}" placeholder="e.g. 880515075123" maxlength="14"
@@ -9412,7 +9435,7 @@ if (currentUser.role === 'hq' && u.role === 'admin') {
         return `
           ${isLocked ? `<button class="btn-secondary" style="color: #059669; border-color: rgba(5,150,105,0.3); margin-top: 8px; width: 100%;" onclick="App.unlockUser('${userId}')">🔓 Buka Semula Akaun (Dikunci)</button>` : ''}
           ${u2?.inactive ? `<button class="btn-secondary" style="color: #059669; border-color: rgba(5,150,105,0.3); margin-top: 8px; width: 100%;" onclick="App.reactivateStaff('${userId}')">✅ Aktifkan Semula</button>` : (!isSelf ? `<button class="btn-secondary" style="color: #B45309; border-color: rgba(180,83,9,0.3); margin-top: 8px; width: 100%;" onclick="App.deactivateStaff('${userId}')">⏸ Deactivate (Inactive)</button>` : '')}
-          ${!isSelf && !u2?.inactive && u2?.role !== 'manager' && u2?.role !== 'admin' ? `<button class="btn-secondary" style="color: #DC2626; border-color: rgba(220,38,38,0.3); margin-top: 8px; width: 100%;" onclick="App.resignStaff('${userId}')">🚪 Resign · Pindah Cases ke Manager</button>` : ''}
+          ${!isSelf && !u2?.inactive && u2?.role !== 'manager' && u2?.role !== 'admin' ? `<button class="btn-secondary" style="color: #DC2626; border-color: rgba(220,38,38,0.3); margin-top: 8px; width: 100%;" onclick="App.resignStaff('${userId}')">🚪 Resign · Pindah Cases</button>` : ''}
           ${!isSelf ? `<button class="btn-secondary" style="color: var(--danger); border-color: rgba(184, 66, 58, 0.3); margin-top: 8px;" onclick="App.deleteUser('${userId}')">Delete Staff (Permanent)</button>` : ''}
         `;
       })()}
@@ -9459,6 +9482,8 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
     
     // 📇 Personal info fields
     updates.full_name = document.getElementById('eu-fullname')?.value.trim() || null;
+    updates.join_date = document.getElementById('eu-join-date')?.value || null;
+    updates.resign_date = document.getElementById('eu-resign-date')?.value || null;
     updates.staff_ic = document.getElementById('eu-ic')?.value.replace(/\D/g, '') || null;
     updates.phone_personal = document.getElementById('eu-phone-p')?.value.trim() || null;
     updates.phone_company1 = document.getElementById('eu-phone-c1')?.value.trim() || null;
@@ -9564,15 +9589,19 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
     const u = DB.user(userId);
     if (!u) return;
     if (userId === Auth.current()?.id) { toast('Tidak boleh resign diri sendiri'); return; }
-    
-    // Check Manager exists
+
     const manager = Logic.findManager();
-    if (!manager) {
-      alert('⚠ Tiada Manager active sekarang. Sila create satu Manager dulu sebelum resign staff ini.');
+    // CS's leader (only if active leader/solo)
+    let csLeader = null;
+    if (u.leader_id) {
+      const L = DB.user(u.leader_id);
+      if (L && !L.inactive && ['leader', 'solo'].includes(L.role)) csLeader = L;
+    }
+    if (!csLeader && !manager) {
+      alert('\u26a0 Tiada Manager active. Sila create Manager dulu sebelum resign staff ini.');
       return;
     }
-    
-    // Count cases that will be transferred (preview)
+
     const allCases = DB.cases();
     const csCases = allCases.filter(c => c.source_cs_id === userId).length;
     const leaderCases = allCases.filter(c => c.leader_id === userId).length;
@@ -9580,33 +9609,28 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
       ...allCases.filter(c => c.source_cs_id === userId).map(c => c.id),
       ...allCases.filter(c => c.leader_id === userId).map(c => c.id)
     ]).size;
-    
-    // Confirm
-    const msg = `Resign ${esc(u.name)}?\n\n` +
-      `• ${totalCases} case(s) akan dipindah ke Manager ${manager.name}\n` +
-      `   (${csCases} sebagai source CS, ${leaderCases} sebagai leader)\n` +
-      `• Staff akan jadi inactive (tak boleh login)\n` +
-      `• Manager kemudian boleh reassign cases ini\n\n` +
-      `Continue?`;
-    
-    if (!confirm(msg)) return;
-    
-    // Step 1: Transfer cases
+
+    let lines = `Resign ${esc(u.name)}?\n\n`;
+    if (csCases > 0) lines += `\u2022 ${csCases} case (CS) \u2192 ${csLeader ? 'Leader ' + csLeader.name : 'Manager ' + (manager ? manager.name : '')}\n`;
+    if (leaderCases > 0) lines += `\u2022 ${leaderCases} case (Leader) \u2192 Manager ${manager ? manager.name : ''}\n`;
+    if (totalCases === 0) lines += `\u2022 Tiada case untuk dipindah\n`;
+    lines += `\u2022 Staff jadi inactive (tak boleh login)\n\nContinue?`;
+
+    if (!confirm(lines)) return;
+
     const result = Logic.transferCasesFromUserToManager(userId);
-    if (!result.ok) {
-      alert('Error: ' + result.error);
-      return;
-    }
-    
-    // Step 2: Deactivate staff (mark inactive + record resign date)
-    DB.updateUser(userId, { 
-      inactive: true, 
+    if (!result.ok && totalCases > 0) { alert('Error: ' + result.error); return; }
+
+    const today = new Date().toISOString().slice(0, 10);
+    DB.updateUser(userId, {
+      inactive: true,
       resigned: true,
-      resigned_at: Date.now() 
+      resigned_at: Date.now(),
+      resign_date: u.resign_date || today
     });
-    
+
     hideModal();
-    toast(`✅ ${esc(u.name)} resigned · ${result.count} cases dipindah ke ${manager.name}`);
+    toast(`\u2705 ${esc(u.name)} resigned \u00b7 ${result.count || 0} cases dipindah`);
     this.render();
   },
 
@@ -9674,6 +9698,10 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
       <div class="form-group">
         <label>Nama Penuh (seperti dalam IC)</label>
         <input type="text" id="nu-fullname" placeholder="Nama penuh rasmi">
+      </div>
+      <div class="form-group">
+        <label>📅 Tarikh Masuk (Join)</label>
+        <input type="date" id="nu-join-date">
       </div>
       <div class="form-group">
         <label>No. IC (12 digit · birthday auto-detect)</label>
@@ -9798,6 +9826,7 @@ if (currentUser.role === 'hq' && targetUser?.role === 'admin') {
         password: hashedPass,
         // 📇 Personal info
         full_name: document.getElementById('nu-fullname')?.value.trim() || null,
+        join_date: document.getElementById('nu-join-date')?.value || null,
         staff_ic: document.getElementById('nu-ic')?.value.replace(/\D/g, '') || null,
         phone_personal: document.getElementById('nu-phone-p')?.value.trim() || null,
         phone_company1: document.getElementById('nu-phone-c1')?.value.trim() || null,
@@ -12435,6 +12464,7 @@ const managerUser = DB.users().find(u => u.role === 'manager' && u.branch_id ===
       rows.push(['Total staff:', targets.length]);
       rows.push([]);
       rows.push(['Login ID', 'Nama Penuh', 'Nama Paparan', 'Role', 'Branch', 'Team Leader', 'Status',
+                 'Tarikh Masuk', 'Tarikh Resign',
                  'No. IC', 'Tarikh Lahir', 'Phone Peribadi', 'Phone Company 1', 'Phone Company 2',
                  'Alamat', 'Bank', 'No. Akaun', 'Emergency Nama', 'Hubungan', 'Emergency Phone']);
       targets.forEach(u => {
@@ -12446,6 +12476,7 @@ const managerUser = DB.users().find(u => u.role === 'manager' && u.branch_id ===
           u.id, u.full_name || '', u.name || '', ROLE_LABELS[u.role] || u.role,
           branch?.name || '', leader?.name || (['leader','solo'].includes(u.role) ? '(self)' : ''),
           u.inactive ? 'Inactive' : 'Active',
+          u.join_date || '', u.resign_date || '',
           u.staff_ic || '',   // 12-digit string
           dobStr, u.phone_personal || '', u.phone_company1 || '', u.phone_company2 || '',
           (u.address || '').replace(/\n/g, ' '), u.bank_name || '',
