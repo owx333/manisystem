@@ -6690,7 +6690,7 @@ ${Permissions.canViewProfit(user) ? `
     
     // ====== Build enriched ranking data with all 5 metrics ======
     // CS Ranking: Payslip / KPI / KFI / Com / Special Com
-    const csUsers = filterByBranch(DB.users().filter(u => u.role === 'cs' || u.role === 'solo'));
+    const csUsers = filterByBranch(DB.users().filter(u => (u.role === 'cs' || u.role === 'solo') && !u.inactive && !u.resigned));
     const csRows = csUsers.map(u => {
       const stats = Logic.csStats(u.id, selectedRankMonth);
       const csCom = Logic.csCommission(u.id, selectedRankMonth);  // CS commission (payslip + submit)
@@ -6709,7 +6709,7 @@ ${Permissions.canViewProfit(user) ? `
     }).sort((a, b) => b.payslip - a.payslip);
     
     // Team Ranking: Team's Payslip / KPI / KFI / Com / Special Com
-    const teamLeaders = filterByBranch(DB.users().filter(u => u.role === 'leader' || u.role === 'solo'));
+    const teamLeaders = filterByBranch(DB.users().filter(u => (u.role === 'leader' || u.role === 'solo') && !u.inactive && !u.resigned));
     const teamRows = teamLeaders.map(l => {
       const stats = Logic.leaderStats(l.id, selectedRankMonth);
       const leaderCom = Logic.leaderCommission(l.id, selectedRankMonth);
