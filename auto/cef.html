@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Koperasi CEF Calculator · Created by Wilson</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   KOPERASI CEF CALCULATOR  ·  Created by Wilson
+   WILSON 改参数：找 script 区里的 "EDIT HERE" CONFIG。
+   ============================================================ */
+:root{
+  --navy:#0a1a2f; --navy2:#0f2742; --panel:#10243d; --line:rgba(201,162,75,.22);
+  --gold:#c9a24b; --gold-soft:#e3c989; --ink:#eaf0f8; --muted:#9fb2cb;
+  --good:#5bbf8a; --warn:#e0a64b; --bad:#e07a6b; --radius:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'IBM Plex Sans',system-ui,sans-serif;
+  background:
+    radial-gradient(1100px 600px at 85% -10%, rgba(201,162,75,.10), transparent 60%),
+    radial-gradient(900px 600px at -10% 110%, rgba(91,191,138,.06), transparent 55%),
+    var(--navy);
+  color:var(--ink); line-height:1.5; -webkit-font-smoothing:antialiased;
+  padding:clamp(14px,3vw,40px);
+}
+.wrap{max-width:1080px;margin:0 auto}
+.top{margin-bottom:22px}
+.brand h1{font-family:'Fraunces',serif;font-weight:600;font-size:clamp(26px,4.5vw,40px);letter-spacing:.3px;line-height:1.05}
+.brand h1 .accent{color:var(--gold)}
+.brand p{color:var(--muted);font-size:13px;margin-top:6px;letter-spacing:.4px}
+.tabs{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+.tab{flex:1;min-width:150px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;cursor:pointer;transition:.2s;text-align:left}
+.tab:hover{border-color:rgba(201,162,75,.5)}
+.tab.on{background:linear-gradient(160deg,var(--navy2),var(--panel));border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset}
+.tab .n{font-family:'IBM Plex Mono',monospace;color:var(--gold);font-size:12px;letter-spacing:1px}
+.tab .t{font-family:'Fraunces',serif;font-size:18px;font-weight:600;margin-top:4px}
+.tab .d{color:var(--muted);font-size:12px;margin-top:3px}
+.grid{display:grid;grid-template-columns:1.1fr 1fr;gap:18px}
+@media(max-width:820px){.grid{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:22px}
+.card h2{font-family:'Fraunces',serif;font-size:19px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.card h2 .dot{width:7px;height:7px;border-radius:50%;background:var(--gold);box-shadow:0 0 10px var(--gold)}
+.card .sub{color:var(--muted);font-size:12.5px;margin-bottom:18px}
+.field{margin-bottom:15px}
+.field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px;font-weight:500;letter-spacing:.2px}
+.field .hint{font-size:11px;color:var(--gold-soft);opacity:.8}
+.inp,select{width:100%;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:11px;color:var(--ink);font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:500;padding:12px 14px;transition:.15s}
+.inp:focus,select:focus{outline:none;border-color:var(--gold);background:rgba(201,162,75,.06)}
+select{font-family:'IBM Plex Sans',sans-serif;font-weight:600;cursor:pointer;color:var(--ink)}
+/* FIX: native dropdown list renders on white bg in some browsers -> force visible colors */
+select option{background:#0f2742;color:#eaf0f8}
+.inp::placeholder{color:rgba(159,178,203,.4)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.prefix{position:relative}
+.prefix .rm{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--gold);font-family:'IBM Plex Mono',monospace;font-size:13px;pointer-events:none}
+.prefix .suf{position:absolute;right:13px;top:50%;transform:translateY(-50%);color:var(--gold);font-family:'IBM Plex Mono',monospace;font-size:13px;pointer-events:none}
+.prefix .inp{padding-left:42px}
+.prefix.pct .inp{padding-left:14px;padding-right:32px}
+.kop-meta{display:flex;flex-wrap:wrap;gap:8px;margin:-4px 0 16px}
+.chip{font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:rgba(201,162,75,.10);border:1px solid var(--line);color:var(--gold-soft);padding:5px 10px;border-radius:999px}
+.chip.warn{background:rgba(224,166,75,.12);border-color:rgba(224,166,75,.4);color:#f0d9a8}
+.result .big{text-align:center;padding:8px 0 16px;border-bottom:1px dashed var(--line);margin-bottom:16px}
+.result .big .lbl{color:var(--muted);font-size:12.5px;letter-spacing:.5px;text-transform:uppercase}
+.result .big .val{font-family:'Fraunces',serif;font-size:clamp(34px,7vw,52px);font-weight:700;color:var(--gold);line-height:1.05;margin-top:6px}
+.result .big .val small{font-size:18px;color:var(--gold-soft);font-weight:500}
+.result .big .note{color:var(--muted);font-size:12px;margin-top:6px}
+.line{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:13.5px}
+.line:last-child{border-bottom:0}
+.line .k{color:var(--muted)}
+.line .v{font-family:'IBM Plex Mono',monospace;font-weight:600}
+.line.em .k{color:var(--ink);font-weight:600}
+.line.em .v{color:var(--gold)}
+.flag{font-size:12px;padding:11px 13px;border-radius:11px;margin-top:14px;display:flex;gap:8px;align-items:flex-start;line-height:1.45}
+.flag.warn{background:rgba(224,166,75,.10);border:1px solid rgba(224,166,75,.3);color:#f0d9a8}
+.flag.bad{background:rgba(224,122,107,.10);border:1px solid rgba(224,122,107,.3);color:#f3c4bb}
+.flag b{display:block;margin-bottom:2px}
+.placeholder{color:var(--muted);text-align:center;padding:40px 10px;font-size:13.5px}
+.placeholder .icn{font-size:34px;opacity:.4;margin-bottom:10px}
+footer{margin-top:26px;text-align:center;color:var(--muted);font-size:11.5px;line-height:1.7}
+footer .sig{color:var(--gold-soft);font-family:'Fraunces',serif;font-size:13px}
+.disc{max-width:640px;margin:8px auto 0;opacity:.75}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div class="brand">
+      <h1>Koperasi <span class="accent">CEF</span> Calculator</h1>
+      <p>Kira ansuran bulanan &amp; kelayakan pembiayaan koperasi · serta-merta</p>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab on" id="tab-monthly" onclick="setMode('monthly')">
+      <div class="n">MODE A</div>
+      <div class="t">Kira Bulanan</div>
+      <div class="d">Key-in jumlah pinjaman → ansuran bulanan</div>
+    </div>
+    <div class="tab" id="tab-elig" onclick="setMode('elig')">
+      <div class="n">MODE B</div>
+      <div class="t">Kira Kelayakan</div>
+      <div class="d">Key-in bulanan → jumlah layak</div>
+    </div>
+    <div class="tab" id="tab-cash" onclick="setMode('cash')">
+      <div class="n">MODE C</div>
+      <div class="t">Kira Duit Tangan</div>
+      <div class="d">Key-in duit tangan → loan + bulanan</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- INPUT -->
+    <div class="card">
+      <h2><span class="dot"></span>Maklumat</h2>
+      <div class="sub">Pilih koperasi dan isi maklumat di bawah.</div>
+
+      <div class="field">
+        <label>Koperasi</label>
+        <select id="kop" onchange="renderKopMeta();calc()"></select>
+      </div>
+      <div class="kop-meta" id="kopMeta"></div>
+
+      <div class="row2">
+        <div class="field">
+          <label>Tempoh (tahun)</label>
+          <input class="inp" id="tenure" type="number" inputmode="numeric" value="10" min="1" step="1" oninput="calc()">
+        </div>
+        <div class="field prefix pct">
+          <label>Payout %</label>
+          <input class="inp" id="payout" type="number" inputmode="decimal" placeholder="70" oninput="calc()">
+          <span class="suf">%</span>
+        </div>
+      </div>
+
+      <!-- MODE A -->
+      <div id="inMonthly">
+        <div class="field prefix">
+          <label>Jumlah pembiayaan diminta</label>
+          <span class="rm">RM</span>
+          <input class="inp" id="loan" type="number" inputmode="decimal" placeholder="10000" oninput="calc()">
+        </div>
+      </div>
+
+      <!-- MODE B -->
+      <div id="inElig" style="display:none">
+        <div class="field prefix">
+          <label>Kelayakan / ansuran bulanan</label>
+          <span class="rm">RM</span>
+          <input class="inp" id="bulan" type="number" inputmode="decimal" placeholder="460" oninput="calc()">
+          <span class="hint">Amaun yang boleh ditolak sebulan.</span>
+        </div>
+      </div>
+
+      <!-- MODE C -->
+      <div id="inCash" style="display:none">
+        <div class="field prefix">
+          <label>Duit tangan yang klien nak</label>
+          <span class="rm">RM</span>
+          <input class="inp" id="cash" type="number" inputmode="decimal" placeholder="5000" oninput="calc()">
+          <span class="hint">Cash diterima = Loan × Payout%. Pastikan isi Payout % di atas.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- RESULT -->
+    <div class="card result">
+      <h2><span class="dot"></span>Keputusan</h2>
+      <div class="sub" id="resultSub"></div>
+      <div id="resultBody">
+        <div class="placeholder"><div class="icn">⌁</div><div>Isi maklumat di sebelah untuk lihat keputusan.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="sig">Created by Wilson</div>
+    <div class="disc">* Pengiraan ini adalah anggaran sahaja dan tidak mengikat koperasi. Sila rujuk Surat Tawaran rasmi untuk pengesahan muktamad.</div>
+  </footer>
+</div>
+
+<script>
+/* ====================================================================
+   ===========================  CONFIG  ==============================
+   >>> EDIT HERE  ·  WILSON 改这里
+   每家 koperasi 一个 object：
+     rate    = 年利率 flat (例: 7.99% 写 7.99)
+     biro    = 除数；月供再 ÷ biro。 1 = 纯 flat ; <1 = 加成(Angkasa/调整)
+     feeLow / feeHigh / feeThr = 每月固定费（贷款 < feeThr 用 feeLow，否则 feeHigh）
+                                  没有固定费就全部 0
+     code    = 显示用代号
+     note    = '' 不显示；'calib' 显示校准警告
+     coll    = COSHARE 专用收费规则（可选）：{thr:门槛月供, flat:低于门槛固定费, pct:高于门槛百分比, dp:小数位}
+               月供 = ROUNDUP( base + (base<thr? flat : base×pct), dp )
+   公式：月供 = ( 贷款×(1+rate×年)/(年×12) + fee ) ÷ biro    （没有 coll 时）
+        可贷 = ( biro×月供 − fee ) × (年×12) / (1+rate×年)
+   payout% 由使用者自己输入。要加新 koperasi：复制一行即可。
+   ==================================================================== */
+const KOP = {
+  YTAA:      {name:"YTAA",      code:"7.99%", rate:7.99, biro:0.98000, feeLow:10, feeHigh:15, feeThr:14999, note:''},
+  KOMUJA:    {name:"KOMUJA",    code:"7.99%", rate:7.99, biro:0.98425, feeLow:30, feeHigh:30, feeThr:0,     note:''},
+  EVERGREEN: {name:"EVERGREEN", code:"7.99%", rate:7.99, biro:0.98000, feeLow:0,  feeHigh:0,  feeThr:0,     note:''},
+  COSHARE:   {name:"COSHARE",   code:"8%",    rate:8.00, biro:1.00000, feeLow:0,  feeHigh:0,  feeThr:0, coll:{thr:667, flat:21.20, pct:0.0318, dp:1}, note:''},
+};
+/* ====================  END CONFIG  ==================== */
+
+const T = {
+  sub_monthly:"Ansuran bulanan", sub_elig:"Jumlah pembiayaan yang layak", sub_cash:"Loan diperlukan untuk duit tangan",
+  r_monthly:"Ansuran sebulan", r_maxloan:"Jumlah layak (anggaran)", r_reqloan:"Jumlah pembiayaan diperlukan",
+  l_loan:"Jumlah pembiayaan", l_tenure:"Tempoh", l_rate:"Kadar (flat)",
+  l_payout:"Anggaran pay-out (tunai)", l_avail:"Kelayakan bulanan", l_inst:"Cadangan ansuran sebulan",
+  l_cash_want:"Duit tangan diminta", l_cash_actual:"Cash sebenar diterima", l_monthly:"Ansuran bulanan",
+  yr:"tahun", mo:"bulan", setpayout:"Isi Payout % untuk lihat tunai.",
+  needpayout:"Mode C perlukan Payout % untuk pengiraan loan.",
+  ph:"Isi maklumat di sebelah untuk lihat keputusan.",
+  calib:"Takaful dianggar", calib_d:"COSHARE = flat 8% + takaful RM21.20/bln (tepat utk pinjaman RM7k–40k, mana-mana tempoh). Pinjaman besar (>RM50k) & umur lain ada premium takaful berbeza — hantar Excel COSHARE (jadual takaful) untuk ketepatan penuh.",
+  bad:"Tiada ruang", bad_d:"Bulanan terlalu rendah selepas caj — tiada jumlah layak."
+};
+let mode='monthly';
+
+const $=id=>document.getElementById(id);
+const has=id=>$(id).value!=='';
+const num=id=>{const v=parseFloat($(id).value);return isNaN(v)?0:v;};
+const fmt=n=>n.toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmt0=n=>n.toLocaleString('en-MY',{maximumFractionDigits:0});
+
+/* unified model */
+function roundUp(x,dp){const f=Math.pow(10,dp);return Math.ceil(x*f-1e-6)/f;}
+function feeFor(k,LA){return LA<k.feeThr?k.feeLow:k.feeHigh;}
+function baseFlat(k,LA,years){return LA*(1+(k.rate/100)*years)/(years*12);}
+function monthlyOf(k,LA,years){
+  const base=baseFlat(k,LA,years);
+  if(k.coll){
+    const fee = base<k.coll.thr ? k.coll.flat : roundUp(base*k.coll.pct,k.coll.dp);
+    return roundUp(base+fee,k.coll.dp);
+  }
+  return (base+feeFor(k,LA))/k.biro;
+}
+function maxLoanOf(k,bulan,years){
+  const factor=(years*12)/(1+(k.rate/100)*years);
+  if(k.coll){
+    // base+flat if base<thr  ->  monthly < thr+flat ; else base*(1+pct)
+    const bound=k.coll.thr+k.coll.flat;
+    const base = bulan<=bound ? (bulan-k.coll.flat) : (bulan/(1+k.coll.pct));
+    return base*factor;
+  }
+  let la=(k.biro*bulan-k.feeLow)*factor;
+  if(la>=k.feeThr) la=(k.biro*bulan-k.feeHigh)*factor;
+  return la;
+}
+
+function buildKopSelect(){
+  const sel=$('kop'); sel.innerHTML='';
+  for(const key in KOP){const o=document.createElement('option');o.value=key;o.textContent=KOP[key].name;sel.appendChild(o);}
+}
+function renderKopMeta(){
+  const k=KOP[$('kop').value];
+  let h=`<span class="chip">${k.code}</span><span class="chip">Rate ${k.rate.toFixed(2)}%</span>`;
+  if(k.biro!==1) h+=`<span class="chip">÷ ${k.biro}</span>`;
+  if(k.feeLow||k.feeHigh) h+=`<span class="chip">Fee RM${k.feeLow}${k.feeLow!==k.feeHigh?'/'+k.feeHigh:''}</span>`;
+  if(k.coll) h+=`<span class="chip">Caj RM${k.coll.flat} / ${(k.coll.pct*100).toFixed(2)}%</span>`;
+  if(k.note==='calib') h+=`<span class="chip warn">⚠ ${T.calib}</span>`;
+  $('kopMeta').innerHTML=h;
+}
+function setMode(m){
+  mode=m;
+  $('tab-monthly').classList.toggle('on',m==='monthly');
+  $('tab-elig').classList.toggle('on',m==='elig');
+  $('tab-cash').classList.toggle('on',m==='cash');
+  $('inMonthly').style.display=m==='monthly'?'':'none';
+  $('inElig').style.display=m==='elig'?'':'none';
+  $('inCash').style.display=m==='cash'?'':'none';
+  calc();
+}
+
+function calc(){
+  const k=KOP[$('kop').value]; if(!k)return;
+  const years=Math.floor(num('tenure'))||0;
+  const po=num('payout');
+  $('resultSub').textContent = mode==='monthly'?T.sub_monthly:mode==='elig'?T.sub_elig:T.sub_cash;
+  const body=$('resultBody');
+  const calibFlag = k.note==='calib'?flag('warn',T.calib,T.calib_d):'';
+
+  if(mode==='monthly'){
+    const LA=num('loan');
+    if(LA<=0||years<=0){body.innerHTML=ph();return;}
+    const bulanan=monthlyOf(k,LA,years);
+    body.innerHTML=`
+      <div class="big">
+        <div class="lbl">${T.r_monthly}</div>
+        <div class="val">RM ${fmt(bulanan)}<small> /${T.mo}</small></div>
+        <div class="note">${k.name} · ${k.code}</div>
+      </div>
+      ${row(T.l_loan,'RM '+fmt(LA))}
+      ${row(T.l_tenure,years+' '+T.yr)}
+      ${row(T.l_rate,k.rate.toFixed(2)+'%')}
+      ${payoutLine(LA,po)}
+      ${calibFlag}`;
+    return;
+  }
+
+  /* MODE B */
+  if (mode === 'elig') {
+    const bulan=num('bulan');
+    if(bulan<=0||years<=0){body.innerHTML=ph();return;}
+    let maxLoan=maxLoanOf(k,bulan,years);
+    if(maxLoan<=0){body.innerHTML=topB(bulan,years)+flag('bad',T.bad,T.bad_d);return;}
+    maxLoan=Math.floor(maxLoan/100)*100;
+    const inst=monthlyOf(k,maxLoan,years);
+    body.innerHTML=`
+      <div class="big">
+        <div class="lbl">${T.r_maxloan}</div>
+        <div class="val">RM ${fmt0(maxLoan)}</div>
+        <div class="note">${k.name} · ${years} ${T.yr} · ${k.rate.toFixed(2)}%</div>
+      </div>
+      ${topB(bulan,years)}
+      ${row(T.l_inst,'RM '+fmt(inst)+' /'+T.mo)}
+      ${payoutLine(maxLoan,po)}
+      ${calibFlag}`;
+    return;
+  }
+
+  /* MODE C — Customer wants X cash → calculate required loan + monthly */
+  const cash = num('cash');
+  if (cash<=0 || years<=0) { body.innerHTML=ph(); return; }
+  if (po<=0) { 
+    body.innerHTML = flag('warn','Payout % diperlukan',T.needpayout);
+    return;
+  }
+  // LA = cash / (payout%/100), round up to nearest RM100 so client gets at least the cash
+  const exactLA = cash / (po/100);
+  const reqLA = Math.ceil(exactLA / 100) * 100;
+  const actualCash = reqLA * (po/100);
+  const bulanan = monthlyOf(k, reqLA, years);
+  body.innerHTML = `
+    <div class="big">
+      <div class="lbl">${T.r_reqloan}</div>
+      <div class="val">RM ${fmt0(reqLA)}</div>
+      <div class="note">${k.name} · ${k.code} · ${years} ${T.yr}</div>
+    </div>
+    ${rowEm(T.l_cash_want,'RM '+fmt(cash))}
+    ${rowEm(T.l_cash_actual+' ('+po+'%)','RM '+fmt(actualCash))}
+    ${row(T.l_monthly,'RM '+fmt(bulanan)+' /'+T.mo)}
+    ${row(T.l_tenure,years+' '+T.yr)}
+    ${row(T.l_rate,k.rate.toFixed(2)+'%')}
+    ${calibFlag}`;
+}
+
+function topB(bulan,years){
+  return row(T.l_avail,'RM '+fmt(bulan))+row(T.l_tenure,years+' '+T.yr);
+}
+function payoutLine(LA,po){
+  if(!has('payout')||po<=0) return `<div class="line"><span class="k">${T.l_payout}</span><span class="v" style="color:var(--muted);font-weight:500">${T.setpayout}</span></div>`;
+  return rowEm(T.l_payout+' ('+po+'%)','RM '+fmt(LA*po/100));
+}
+const ph=()=>`<div class="placeholder"><div class="icn">⌁</div><div>${T.ph}</div></div>`;
+const row=(k,v)=>`<div class="line"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+const rowEm=(k,v)=>`<div class="line em"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+const flag=(c,h,d)=>`<div class="flag ${c}"><span>${c==='bad'?'✕':'!'}</span><span><b>${h}</b>${d}</span></div>`;
+
+buildKopSelect(); renderKopMeta(); calc();
+</script>
+</body>
+</html>
