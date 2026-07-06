@@ -1,0 +1,1292 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CCA-F 备考作战室 · Exam War Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;800&family=Noto+Sans+SC:wght@400;500;700&family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Inter:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0E1626;
+  --ink-2:#182642;
+  --paper:#F7F5EF;
+  --card:#FFFFFF;
+  --text:#1C2333;
+  --muted:#67708A;
+  --gold:#C9A24B;
+  --gold-soft:#F3E9D2;
+  --green:#2E9E6B;
+  --red:#D6455D;
+  --line:#E5E0D4;
+  --d1:#B0483F; --d2:#2F6F8F; --d3:#C9A24B; --d4:#5B7A46; --d5:#6C5B93;
+  --radius:14px;
+  --mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'Noto Sans SC','Inter',sans-serif;background:var(--paper);color:var(--text);line-height:1.75;font-size:16px}
+.serif{font-family:'Noto Serif SC','Fraunces',serif}
+
+.topbar{position:sticky;top:0;z-index:50;background:var(--ink);color:#F3EEE1;display:flex;align-items:center;gap:12px;padding:10px 16px;box-shadow:0 2px 12px rgba(14,22,38,.3)}
+.topbar .logo{font-family:'Noto Serif SC','Fraunces',serif;font-weight:800;font-size:17px}
+.topbar .logo b{color:var(--gold)}
+.topbar .spacer{flex:1}
+.lang-toggle{display:flex;border:1px solid rgba(255,255,255,.25);border-radius:99px;overflow:hidden}
+.lang-toggle button{background:transparent;color:#CBD3E5;border:none;padding:5px 14px;font-size:13px;cursor:pointer;font-family:inherit}
+.lang-toggle button.on{background:var(--gold);color:var(--ink);font-weight:700}
+.menu-btn{display:none;background:transparent;border:1px solid rgba(255,255,255,.25);color:#F3EEE1;border-radius:8px;padding:5px 10px;font-size:16px;cursor:pointer}
+
+.layout{display:grid;grid-template-columns:290px 1fr;min-height:calc(100vh - 52px)}
+.sidebar{background:#FFFDF7;border-right:1px solid var(--line);padding:16px 0 40px;overflow-y:auto;max-height:calc(100vh - 52px);position:sticky;top:52px}
+.main{padding:28px 22px 90px;max-width:880px;margin:0 auto;width:100%}
+
+.snav{list-style:none}
+.snav a{display:flex;gap:10px;align-items:baseline;padding:10px 18px;text-decoration:none;color:var(--text);font-size:14px;border-left:4px solid transparent}
+.snav a:hover{background:#F5F0E2}
+.snav li.active a{background:#F2EBD8;font-weight:700;border-left-color:var(--gold)}
+.snav .tag{font-family:var(--mono);font-size:10.5px;color:#fff;border-radius:5px;padding:1px 7px;flex:0 0 auto}
+.snav .w{margin-left:auto;font-size:11.5px;color:var(--muted)}
+.snav-sec{padding:14px 18px 4px;font-size:11.5px;letter-spacing:1.5px;color:var(--muted);font-weight:700}
+.t-d1{background:var(--d1)} .t-d2{background:var(--d2)} .t-d3{background:var(--d3);color:var(--ink)!important} .t-d4{background:var(--d4)} .t-d5{background:var(--d5)}
+.t-x{background:var(--ink)}
+
+.hero{background:var(--ink);color:#F3EEE1;border-radius:20px;padding:36px 32px;position:relative;overflow:hidden;margin-bottom:24px}
+.hero h1{font-family:'Noto Serif SC','Fraunces',serif;font-weight:800;font-size:clamp(23px,3.6vw,34px);line-height:1.32;margin-bottom:10px}
+.hero h1 b{color:var(--gold)}
+.hero p{max-width:600px;color:#C6CDDF;font-size:14.5px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:20px}
+.fact{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px 14px}
+.fact .v{font-family:'Fraunces',serif;font-weight:800;font-size:21px;color:var(--gold)}
+.fact .k{font-size:11.5px;color:#AEB7CC;margin-top:2px}
+
+.spectrum{display:flex;height:34px;border-radius:10px;overflow:hidden;margin:14px 0 6px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.spectrum a{display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;text-decoration:none;font-family:var(--mono)}
+.spectrum a:hover{filter:brightness(1.12)}
+.spec-label{font-size:12px;color:var(--muted);margin-bottom:22px}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin-bottom:18px}
+.card h2{font-family:'Noto Serif SC',serif;font-size:19px;margin-bottom:10px}
+.card p{font-size:14.5px;margin-bottom:10px}
+.steps{counter-reset:st;list-style:none}
+.steps li{position:relative;padding:8px 0 8px 42px;font-size:14.5px}
+.steps li::before{counter-increment:st;content:counter(st);position:absolute;left:0;top:8px;width:28px;height:28px;border-radius:50%;background:var(--gold);color:var(--ink);font-weight:800;display:flex;align-items:center;justify-content:center;font-size:14px}
+
+.crumb{font-size:12.5px;color:var(--muted);margin-bottom:10px}
+.dband{display:inline-block;color:#fff;font-family:var(--mono);font-size:12px;font-weight:700;border-radius:7px;padding:3px 12px;margin-bottom:10px}
+.ltitle{font-family:'Noto Serif SC','Fraunces',serif;font-weight:800;font-size:clamp(22px,3.2vw,29px);line-height:1.35;margin-bottom:14px}
+.lesson-body h3{font-family:'Noto Serif SC',serif;font-size:18px;margin:28px 0 10px}
+.lesson-body h4{font-size:15px;margin:18px 0 8px}
+.lesson-body p{margin-bottom:12px;font-size:15px}
+.lesson-body ul,.lesson-body ol{padding-left:24px;margin-bottom:14px;font-size:15px}
+.lesson-body li{margin-bottom:6px}
+.lesson-body table{border-collapse:collapse;width:100%;font-size:13.5px;margin-bottom:16px}
+.lesson-body th,.lesson-body td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+.lesson-body th{background:#F2EDDD;font-family:'Noto Serif SC',serif}
+.term{background:var(--gold-soft);border-radius:5px;padding:0 5px;font-weight:500}
+.trap{background:#FDF0F2;border:1px solid #F0C4CE;border-left:5px solid var(--red);border-radius:10px;padding:13px 16px;font-size:14px;margin:14px 0}
+.trap b:first-child{color:var(--red)}
+.keypt{background:#EDF6F1;border:1px solid #BFE3CE;border-left:5px solid var(--green);border-radius:10px;padding:13px 16px;font-size:14px;margin:14px 0}
+pre{background:var(--ink);color:#E8ECF6;border-radius:12px;padding:16px 18px;font-family:var(--mono);font-size:12.6px;line-height:1.6;overflow-x:auto;margin:12px 0 18px}
+code.inline{font-family:var(--mono);font-size:.88em;background:#EEE9DB;border-radius:5px;padding:1px 6px}
+
+.qcard{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin:16px 0}
+.qcard .scen{font-size:11.5px;font-weight:700;letter-spacing:.6px;color:var(--muted);margin-bottom:6px;font-family:var(--mono)}
+.qcard .stem{font-weight:700;font-size:14.5px;margin-bottom:10px;line-height:1.65}
+.qopt{display:block;width:100%;text-align:left;background:#FBF9F2;border:1.5px solid var(--line);border-radius:9px;padding:9px 14px;margin-bottom:7px;font-size:14px;cursor:pointer;font-family:inherit;transition:all .15s;line-height:1.55}
+.qopt:hover{border-color:var(--gold)}
+.qopt.correct{background:#E7F6EE;border-color:var(--green);font-weight:700}
+.qopt.wrong{background:#FDECEF;border-color:var(--red)}
+.qexp{display:none;font-size:13.5px;background:#F2EDDD;border-radius:8px;padding:11px 14px;margin-top:4px;line-height:1.65}
+.qexp.show{display:block}
+
+/* mock exam */
+.mock-set{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px}
+.mock-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.timer{font-family:var(--mono);font-weight:700;font-size:20px;background:var(--ink);color:var(--gold);border-radius:10px;padding:6px 16px}
+.timer.low{color:#FF8A9B}
+.mock-progress{font-size:13px;color:var(--muted)}
+.btn{border:none;border-radius:99px;padding:11px 24px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;text-decoration:none;display:inline-block}
+.btn.gold{background:var(--gold);color:var(--ink)}
+.btn.ink{background:var(--ink);color:#F3EEE1}
+.btn.ghost{background:transparent;border:1.5px solid var(--line);color:var(--text)}
+.gauge-wrap{text-align:center;padding:10px 0 4px}
+.gauge{width:230px;height:130px;margin:0 auto;position:relative}
+.gauge svg{width:100%;height:100%}
+.gauge .score{position:absolute;left:0;right:0;bottom:6px;font-family:'Fraunces',serif;font-weight:800;font-size:38px}
+.gauge .score small{font-size:14px;color:var(--muted);font-family:'Noto Sans SC',sans-serif;font-weight:400}
+.verdict{font-family:'Noto Serif SC',serif;font-weight:800;font-size:22px;margin:6px 0 2px}
+.verdict.pass{color:var(--green)} .verdict.fail{color:var(--red)}
+.dbreak{margin-top:16px}
+.dbreak .row{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:13px}
+.dbreak .nm{flex:0 0 210px}
+.dbreak .bar{flex:1;height:10px;background:#EFEADB;border-radius:99px;overflow:hidden}
+.dbreak .bar i{display:block;height:100%;border-radius:99px}
+.dbreak .pc{flex:0 0 60px;text-align:right;font-family:var(--mono);font-size:12px}
+
+.lfoot{display:flex;gap:12px;align-items:center;margin-top:34px;flex-wrap:wrap}
+.btn.done-btn{background:var(--green);color:#fff}
+.btn.done-btn.undone{background:#EDE8D9;color:var(--muted)}
+
+@media(max-width:900px){
+  .layout{grid-template-columns:1fr}
+  .sidebar{position:fixed;left:0;top:52px;width:280px;max-height:calc(100vh - 52px);transform:translateX(-100%);transition:transform .25s;z-index:40;box-shadow:8px 0 30px rgba(0,0,0,.12)}
+  .sidebar.open{transform:translateX(0)}
+  .menu-btn{display:block}
+  .main{padding:20px 15px 80px}
+  .dbreak .nm{flex:0 0 130px;font-size:12px}
+}
+::selection{background:var(--gold-soft)}
+:focus-visible{outline:3px solid var(--gold);outline-offset:2px;border-radius:4px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <button class="menu-btn" id="menuBtn" aria-label="menu">☰</button>
+  <div class="logo">CCA-F <b>备考作战室</b> <span style="font-family:'Fraunces',serif;font-size:11.5px;opacity:.7">Exam War Room</span></div>
+  <div class="spacer"></div>
+  <div class="lang-toggle" role="group" aria-label="language">
+    <button id="btnZh" class="on">中文</button>
+    <button id="btnEn">EN</button>
+  </div>
+</div>
+
+<div class="layout">
+  <nav class="sidebar" id="sidebar">
+    <ul class="snav" id="snav"></ul>
+  </nav>
+  <main class="main" id="main"></main>
+</div>
+
+<script>
+/* =====================================================
+   CCA-F Exam War Room · Claude Certified Architect
+   Foundations exam prep — bilingual single-file system
+   ===================================================== */
+
+const I18N = {
+zh:{
+  nav_home:"作战总览", nav_scen:"六大考试场景", nav_mock:"模拟考试", nav_plan:"三周冲刺计划",
+  domains_sec:"五大考域精讲", tools_sec:"备考工具",
+  hero_t:"考的不是背书，是<b>架构判断力</b>",
+  hero_p:"CCA-F 是 Anthropic 的官方架构师认证：60 道情景选择题、120 分钟、720/1000 及格。每道题把你丢进一个真实生产场景，问你「此刻正确的架构决策是什么」。这个作战室按官方五大考域逐一拆解核心考点、高频陷阱，并提供全真模拟考。",
+  f_q:"道情景题", f_min:"分钟", f_pass:"及格线 /1000", f_fee:"考试费",
+  reg_t:"📍 报名路径（全程免费备考）",
+  reg_steps:["到 claude.com/partners 免费加入 Claude Partner Network（用 AUDO Solutions 名义申请）","登录 Anthropic Academy（Skilljar 平台），完成免费官方课程——旗舰课《Building with the Claude API》约 8 小时","做官方模拟考。经验法则：模拟考稳定 850+ 再约真考","通过 Academy 门户预约正式考试（线上监考或考试中心，考试语言为英文）"],
+  spectrum_l:"考域权重分布（点击色块直达该域精讲）· D1+D3+D4 合计 67%，时间紧就重仓这三个",
+  obj_t:"📌 本域考什么",
+  traps_t:"⚠️ 高频陷阱",
+  quiz_t:"🎯 本域实战题（考试同款情景题型）",
+  mark_done:"✔ 标记本域已掌握", marked:"✔ 已掌握（点击取消）",
+  correct:"✓ 答对了！", wrong:"✗ 不对。",
+  mock_t:"全真模拟考",
+  mock_intro:"从题库随机抽取 20 题（按官方考域权重分布），限时 40 分钟——和真考同样的 2 分钟/题节奏。交卷后按 1000 分制换算，并给出各考域得分诊断。",
+  mock_start:"开始模拟考 →", mock_submit:"交卷", mock_next:"下一题 →", mock_prev:"← 上一题",
+  mock_q:"题", mock_unanswered:"还有未作答的题目，确定交卷？",
+  pass_v:"通过线以上 🎉", fail_v:"未达通过线",
+  pass_msg:"恭喜！这个水平可以去约官方模拟考验证了。保持每天刷题手感，弱项考域回去重读精讲。",
+  fail_msg:"还没到 720，正常——看下面的考域诊断，最弱的两个域回去重读精讲 + 重做题目，三天后再模一次。",
+  review_t:"逐题回顾", retry:"再模一次", back_home:"返回总览",
+  your_ans:"你的答案", right_ans:"正确答案", not_answered:"（未作答）",
+  d_diag:"考域诊断",
+  time_left:"剩余时间",
+  plan_t:"三周冲刺计划（每天 60–90 分钟）",
+  min_read:"分钟精读"
+},
+en:{
+  nav_home:"War Room Overview", nav_scen:"The 6 Exam Scenarios", nav_mock:"Mock Exam", nav_plan:"3-Week Sprint Plan",
+  domains_sec:"THE FIVE DOMAINS", tools_sec:"PREP TOOLS",
+  hero_t:"It doesn't test recall — it tests <b>architectural judgment</b>",
+  hero_p:"CCA-F is Anthropic's official architect certification: 60 scenario-based questions, 120 minutes, 720/1000 to pass. Every question drops you into a real production situation and asks for the correct architectural call. This war room breaks down each official domain's core concepts and classic traps, and includes a full mock exam.",
+  f_q:"scenario Qs", f_min:"minutes", f_pass:"pass line /1000", f_fee:"exam fee",
+  reg_t:"📍 Registration path (prep is entirely free)",
+  reg_steps:["Join the Claude Partner Network free at claude.com/partners (apply as AUDO Solutions)","Log into Anthropic Academy (Skilljar) and finish the free official courses — the flagship 'Building with the Claude API' runs ~8 hours","Take the official practice exam. Rule of thumb: book the real one only when you consistently score 850+","Schedule the proctored exam via the Academy portal (online or test center; the exam is in English)"],
+  spectrum_l:"Domain weights (click a band to jump to its deep-dive) · D1+D3+D4 = 67% — weight your hours there if time is short",
+  obj_t:"📌 What this domain tests",
+  traps_t:"⚠️ Classic traps",
+  quiz_t:"🎯 Domain drill (same scenario format as the real exam)",
+  mark_done:"✔ Mark domain mastered", marked:"✔ Mastered (tap to undo)",
+  correct:"✓ Correct!", wrong:"✗ Not quite.",
+  mock_t:"Full Mock Exam",
+  mock_intro:"20 questions drawn randomly from the bank (weighted by the official domain split), 40-minute limit — the same 2-min/question pace as the real thing. Scored on the 1000-point scale with a per-domain diagnostic.",
+  mock_start:"Start mock exam →", mock_submit:"Submit", mock_next:"Next →", mock_prev:"← Previous",
+  mock_q:"Q", mock_unanswered:"Some questions are unanswered. Submit anyway?",
+  pass_v:"Above the pass line 🎉", fail_v:"Below the pass line",
+  pass_msg:"At this level, go validate on the official practice exam. Keep daily drills going and re-read your weakest domain.",
+  fail_msg:"Not at 720 yet — normal. Check the diagnostic below, re-study your two weakest domains, redo their drills, and mock again in three days.",
+  review_t:"Question review", retry:"Retake mock", back_home:"Back to overview",
+  your_ans:"Your answer", right_ans:"Correct answer", not_answered:"(unanswered)",
+  d_diag:"Domain diagnostic",
+  time_left:"Time left",
+  plan_t:"3-Week Sprint Plan (60–90 min/day)",
+  min_read:"min read"
+}
+};
+
+const DOMAINS = [];
+const QBANK = [];
+
+/* ================= DOMAIN DEEP-DIVES ================= */
+
+DOMAINS.push({
+id:"d1", weight:27, color:"var(--d1)", minutes:35,
+title:{zh:"D1 · 智能体架构与编排", en:"D1 · Agentic Architecture & Orchestration"},
+tests:{
+ zh:["什么时候该用 Agent、什么时候用更简单的模式（这是全卷第一大送命题）","五种编排模式的选型：链式/路由/并行/Orchestrator-Worker/评估-优化","Subagent 的上下文隔离与 token 经济学","Agent 生命周期、终止条件与失控防护"],
+ en:["When to use an agent vs a simpler pattern (the exam's #1 killer topic)","Choosing among 5 orchestration patterns: chaining / routing / parallelization / orchestrator-worker / evaluator-optimizer","Subagent context isolation and token economics","Agent lifecycle, stop conditions and runaway protection"]
+},
+body:{zh:`
+<h3>1. 三种系统，先分清楚</h3>
+<table>
+<tr><th>类型</th><th>定义</th><th>什么时候用</th></tr>
+<tr><td><b>对话系统</b></td><td>一问一答，无工具</td><td>问答、写作、分析</td></tr>
+<tr><td><b>工作流 Workflow</b></td><td>由<b>代码</b>预先定死路线，LLM 只是其中的步骤</td><td>路线可预知的任务。<b>能画出确定流程图 → 用工作流</b></td></tr>
+<tr><td><b>智能体 Agent</b></td><td>LLM <b>自主决定</b>路线：循环「收集上下文 → 行动（用工具）→ 验证 → 再行动」直到达成目标</td><td>路线无法预知、需要临场判断的任务</td></tr>
+</table>
+<div class="keypt">✅ <b>全卷第一心法：够用的最简架构就是正确答案。</b>考题常给你一个「更强大」的 Agent 方案 vs 一个「更朴素」的 Workflow 方案——如果任务路线是确定的，朴素方案就是正确答案。Agent 换来的灵活性是拿确定性和成本换的。</div>
+
+<h3>2. 五种编排模式（必背 + 必会选型）</h3>
+<table>
+<tr><th>模式</th><th>形状</th><th>典型场景</th></tr>
+<tr><td><b>Prompt Chaining 链式</b></td><td>A→B→C 串行，每步输出喂下一步</td><td>生成→翻译→润色；步骤固定且有先后依赖</td></tr>
+<tr><td><b>Routing 路由</b></td><td>先分类，再分发给专门处理器</td><td>客服工单按类型分流到不同提示词/模型</td></tr>
+<tr><td><b>Parallelization 并行</b></td><td>同时跑多个子任务再汇总</td><td>互相独立的子任务；多视角评审同一份代码</td></tr>
+<tr><td><b>Orchestrator-Worker（Hub-and-Spoke 中枢辐射）</b></td><td>中央协调者<b>动态</b>拆解任务、派发给 worker、汇总结果</td><td>子任务数量与内容<b>无法预知</b>的复杂任务（如多智能体研究系统）</td></tr>
+<tr><td><b>Evaluator-Optimizer 评估-优化</b></td><td>生成者产出 → 评估者打分给反馈 → 循环改进</td><td>有明确评价标准、值得多轮打磨的产出</td></tr>
+</table>
+<p>选型口诀：<b>步骤固定→链式；先分类→路由；子任务独立→并行；子任务动态→O-W；要反复打磨→E-O。</b>Parallelization 和 O-W 的区别是考试最爱：并行的子任务是<b>预先定死</b>的，O-W 的子任务是协调者<b>临场决定</b>的。</p>
+
+<h3>3. Subagent 与 token 经济学</h3>
+<ul>
+<li><b>上下文隔离</b>：每个 subagent 拥有独立干净的上下文；worker 的中间垃圾不回流主会话，只汇报结论。防止<span class="term">上下文泄漏（context leakage）</span>和主会话膨胀</li>
+<li><b>token 经济</b>：每一轮 agent 循环都在烧钱。给 worker 的上下文要「够用最小」；结果要求「结论式汇报」而不是全过程转储</li>
+<li><b>最小权限</b>：worker 只拿完成子任务所需的工具。审查型 worker 不给写权限</li>
+</ul>
+
+<h3>4. 生命周期与失控防护</h3>
+<ul>
+<li>Agent 必须有<b>明确终止条件</b>：达成目标 / 最大迭代次数 / 预算上限。三者至少有一个硬性存在</li>
+<li><span class="term">生命周期钩子（lifecycle hooks）</span>：在关键节点（工具调用前后、任务完成时）插入校验、日志、拦截</li>
+<li>高风险动作（写生产数据、发外部消息、花钱）设<b>人工审批门</b>（human-in-the-loop gate）</li>
+</ul>
+`,
+en:`
+<h3>1. Three kinds of systems — separate them first</h3>
+<table>
+<tr><th>Type</th><th>Definition</th><th>When</th></tr>
+<tr><td><b>Conversational</b></td><td>Q&A, no tools</td><td>Answers, writing, analysis</td></tr>
+<tr><td><b>Workflow</b></td><td>Route fixed in advance by <b>code</b>; the LLM is just a step</td><td>Predictable routes. <b>If you can draw the flowchart → workflow</b></td></tr>
+<tr><td><b>Agent</b></td><td>The LLM <b>chooses</b> the route: loop of gather context → act (tools) → verify → act again, until done</td><td>Unpredictable routes needing in-the-moment judgment</td></tr>
+</table>
+<div class="keypt">✅ <b>The exam's #1 mantra: the simplest architecture that meets requirements IS the correct answer.</b> Questions love offering a "more capable" agent option vs a "plainer" workflow option — if the route is deterministic, the plain option wins. Agent flexibility is bought with determinism and cost.</div>
+
+<h3>2. The five orchestration patterns (memorize + choose)</h3>
+<table>
+<tr><th>Pattern</th><th>Shape</th><th>Typical use</th></tr>
+<tr><td><b>Prompt chaining</b></td><td>A→B→C serial; each output feeds the next</td><td>Generate→translate→polish; fixed ordered steps</td></tr>
+<tr><td><b>Routing</b></td><td>Classify first, dispatch to specialists</td><td>Support tickets split by type to different prompts/models</td></tr>
+<tr><td><b>Parallelization</b></td><td>Run independent subtasks simultaneously, then aggregate</td><td>Independent subtasks; multi-angle review of one artifact</td></tr>
+<tr><td><b>Orchestrator-worker (hub-and-spoke)</b></td><td>A central coordinator <b>dynamically</b> decomposes, dispatches to workers, synthesizes</td><td>Complex tasks whose subtasks <b>can't be known upfront</b> (e.g. multi-agent research)</td></tr>
+<tr><td><b>Evaluator-optimizer</b></td><td>Generator produces → evaluator scores & critiques → loop</td><td>Clear evaluation criteria; output worth multiple polish rounds</td></tr>
+</table>
+<p>Choosing chant: <b>fixed steps→chaining; classify first→routing; independent subtasks→parallel; dynamic subtasks→O-W; iterative polish→E-O.</b> The exam's favorite: parallelization's subtasks are <b>predefined</b>; O-W's are <b>decided at runtime</b> by the orchestrator.</p>
+
+<h3>3. Subagents & token economics</h3>
+<ul>
+<li><b>Context isolation</b>: each subagent gets a clean, independent context; worker mess never flows back — only conclusions. Prevents <span class="term">context leakage</span> and main-session bloat</li>
+<li><b>Token economics</b>: every agent loop burns money. Give workers minimal-sufficient context; demand conclusion-style reports, not full transcripts</li>
+<li><b>Least privilege</b>: workers get only the tools their subtask needs. Review-type workers get no write access</li>
+</ul>
+
+<h3>4. Lifecycle & runaway protection</h3>
+<ul>
+<li>Every agent needs <b>hard stop conditions</b>: goal reached / max iterations / budget cap — at least one must exist</li>
+<li><span class="term">Lifecycle hooks</span>: inject validation, logging or interception at key points (before/after tool calls, on completion)</li>
+<li>High-risk actions (writing production data, external messages, spending) go behind a <b>human-in-the-loop gate</b></li>
+</ul>
+`},
+traps:{zh:[
+"「选最强大的方案」= 送分陷阱。判断标准永远是「满足需求的最简方案」，不是能力上限",
+"把「并行」和「Orchestrator-Worker」混为一谈：子任务预先固定是并行，临场动态拆解才是 O-W",
+"省钱方案里藏着失败模式（例如砍掉验证步骤降成本）——本考试奖励可靠性优先，成本其次",
+"没有终止条件的 agent 循环设计：任何正确答案里都藏着 max iterations / 预算上限"
+],en:[
+"'Pick the most capable option' = the gift trap. The criterion is always 'simplest that meets requirements', never capability ceiling",
+"Confusing parallelization with orchestrator-worker: predefined subtasks = parallel; runtime dynamic decomposition = O-W",
+"Cost-saving options that hide a failure mode (e.g. cutting the verification step) — this exam rewards reliability first, budget second",
+"Agent loop designs without stop conditions: correct answers always contain max iterations / a budget cap somewhere"
+]},
+});
+
+DOMAINS.push({
+id:"d2", weight:18, color:"var(--d2)", minutes:30,
+title:{zh:"D2 · 工具设计与 MCP 集成", en:"D2 · Tool Design & MCP Integration"},
+tests:{
+ zh:["MCP 三大原语：Tools / Resources / Prompts 的区别与用途","工具边界设计：少而精 vs 多而杂，防止推理过载","传输方式（stdio / HTTP）与鉴权（OAuth）","工具错误处理与最小权限授权"],
+ en:["The 3 MCP primitives: tools / resources / prompts — differences and uses","Tool boundary design: few-and-sharp vs many-and-muddy; preventing reasoning overload","Transports (stdio / HTTP) and auth (OAuth)","Tool error handling and least-privilege scoping"]
+},
+body:{zh:`
+<h3>1. MCP 三大原语（必考基本功）</h3>
+<table>
+<tr><th>原语</th><th>是什么</th><th>谁发起</th><th>例子</th></tr>
+<tr><td><b>Tools</b></td><td>模型可调用的<b>动作</b>（有副作用或计算）</td><td>模型决定调用</td><td>create_issue、query_db、send_email</td></tr>
+<tr><td><b>Resources</b></td><td>模型可读取的<b>数据</b>（无副作用）</td><td>应用/上下文提供</td><td>文档内容、表结构、配置文件</td></tr>
+<tr><td><b>Prompts</b></td><td>服务器预置的<b>指令模板</b></td><td>用户选择触发</td><td>「生成周报」一键模板</td></tr>
+</table>
+<p>考题常问「X 应该做成 tool 还是 resource？」判断法：<b>要不要执行动作/产生副作用？要 → tool；只是给模型看的数据 → resource。</b></p>
+
+<h3>2. 工具边界设计：这是 D2 的灵魂</h3>
+<ul>
+<li><b>少而精 > 多而杂</b>：几十个功能重叠、命名含糊的工具会造成<span class="term">推理过载</span>——模型选错工具的概率随工具数量和模糊度上升。合并重叠工具、清晰命名、一个工具只做一类事</li>
+<li><b>description 是接口契约</b>：模型完全靠 description 决定「何时用、怎么用」。好的 description 说清：用途、输入含义、返回什么、什么时候<b>不该</b>用</li>
+<li><b>返回值要为模型设计</b>：返回精炼、结构化、带语义的结果，而不是原始数据转储。让 500 行 SQL 结果先聚合再返回</li>
+<li><b>错误也要好好说</b>：工具失败时返回「可行动的错误信息」（缺什么参数、该怎么改），让模型能自我纠正，而不是一句 error 500</li>
+</ul>
+
+<h3>3. 传输与鉴权</h3>
+<table>
+<tr><th>传输</th><th>场景</th></tr>
+<tr><td><b>stdio</b></td><td>本地进程：MCP 服务器跑在用户机器上，通过标准输入输出通信</td></tr>
+<tr><td><b>HTTP（Streamable/SSE）</b></td><td>远程服务：跨网络访问，配 OAuth 做用户级授权</td></tr>
+</table>
+<p>考点：远程多用户服务 → HTTP + OAuth;本地个人工具 → stdio。</p>
+
+<h3>4. 安全与最小权限</h3>
+<ul>
+<li>按任务需要授予工具集：只读任务的 agent 不配置写工具（回忆 D1 的 worker 原则，两域互通）</li>
+<li>文件类工具限定目录范围；数据库类工具优先只读副本</li>
+<li><span class="term">提示注入</span>意识：工具带回的外部内容（网页、issue、邮件）可能包含恶意指令；写操作保持审批门</li>
+</ul>
+`,
+en:`
+<h3>1. The three MCP primitives (must-know basics)</h3>
+<table>
+<tr><th>Primitive</th><th>What</th><th>Initiated by</th><th>Examples</th></tr>
+<tr><td><b>Tools</b></td><td><b>Actions</b> the model can invoke (side effects or computation)</td><td>Model decides</td><td>create_issue, query_db, send_email</td></tr>
+<tr><td><b>Resources</b></td><td><b>Data</b> the model can read (no side effects)</td><td>App/context provides</td><td>Document contents, schemas, configs</td></tr>
+<tr><td><b>Prompts</b></td><td>Server-provided <b>command templates</b></td><td>User selects</td><td>A one-click "weekly report" template</td></tr>
+</table>
+<p>The classic question — "should X be a tool or a resource?" Test: <b>does it perform an action / cause side effects? Yes → tool; just data for the model to read → resource.</b></p>
+
+<h3>2. Tool boundary design: the soul of D2</h3>
+<ul>
+<li><b>Few-and-sharp beats many-and-muddy</b>: dozens of overlapping, vaguely named tools cause <span class="term">reasoning overload</span> — wrong-tool probability rises with count and ambiguity. Merge overlaps, name clearly, one tool per job family</li>
+<li><b>The description is the interface contract</b>: the model decides when/how to use a tool purely from its description. A good one states: purpose, input meanings, what it returns, and when <b>not</b> to use it</li>
+<li><b>Design return values for the model</b>: concise, structured, semantic results — not raw dumps. Aggregate the 500-row SQL result before returning</li>
+<li><b>Errors deserve craft too</b>: failed tools should return actionable errors (what's missing, how to fix) so the model can self-correct — not a bare error 500</li>
+</ul>
+
+<h3>3. Transports & auth</h3>
+<table>
+<tr><th>Transport</th><th>Scenario</th></tr>
+<tr><td><b>stdio</b></td><td>Local process: the MCP server runs on the user's machine, speaking over stdin/stdout</td></tr>
+<tr><td><b>HTTP (Streamable/SSE)</b></td><td>Remote service: cross-network access, paired with OAuth for per-user authorization</td></tr>
+</table>
+<p>Exam point: remote multi-user service → HTTP + OAuth; local personal tooling → stdio.</p>
+
+<h3>4. Security & least privilege</h3>
+<ul>
+<li>Grant toolsets per task need: read-only agents get no write tools (recall D1's worker principle — the domains interlock)</li>
+<li>Scope file tools to specific directories; prefer read replicas for database tools</li>
+<li><span class="term">Prompt injection</span> awareness: external content returned by tools (webpages, issues, emails) may embed malicious instructions; keep approval gates on writes</li>
+</ul>
+`},
+traps:{zh:[
+"「把所有 API 端点一比一包装成工具」= 错。工具要按模型的任务语义设计，通常需要合并与抽象",
+"「工具越多能力越强」= 错。过多含糊工具导致选择错误率上升（推理过载）",
+"把只读数据做成 tool（应为 resource），或把有副作用的动作做成 resource",
+"远程多用户场景选 stdio、或本地个人场景硬上 OAuth——传输/鉴权与部署形态错配"
+],en:[
+"'Wrap every API endpoint 1:1 as a tool' = wrong. Tools are designed around the model's task semantics — usually merged and abstracted",
+"'More tools = more capable' = wrong. Many vague tools raise wrong-choice rates (reasoning overload)",
+"Making read-only data a tool (should be a resource), or a side-effecting action a resource",
+"Transport/auth mismatched to deployment: stdio for remote multi-user, or OAuth ceremony for a local personal tool"
+]},
+});
+
+DOMAINS.push({
+id:"d3", weight:20, color:"var(--d3)", minutes:35,
+title:{zh:"D3 · Claude Code 配置与工作流", en:"D3 · Claude Code Configuration & Workflows"},
+tests:{
+ zh:["CLAUDE.md 三层级（用户/项目/子目录）与优先级规则","Skills：SKILL.md frontmatter、触发机制、渐进式加载","Subagents 配置与委派、Hooks 生命周期与退出码约定","Plan Mode、斜杠命令、无头模式 -p 与 CI/CD 集成"],
+ en:["The 3 CLAUDE.md levels (user/project/subdirectory) and precedence","Skills: SKILL.md frontmatter, triggering, progressive disclosure","Subagent configuration & delegation; hook lifecycle & exit-code conventions","Plan Mode, slash commands, headless -p and CI/CD integration"]
+},
+body:{zh:`
+<h3>1. CLAUDE.md 层级与优先级（细节考很凶）</h3>
+<table>
+<tr><th>层级</th><th>位置</th><th>作用域</th></tr>
+<tr><td>用户级</td><td>~/.claude/CLAUDE.md</td><td>你个人的所有项目</td></tr>
+<tr><td>项目级</td><td>项目根 CLAUDE.md</td><td>本项目全体成员（进 Git 共享）</td></tr>
+<tr><td>子目录级</td><td>如 functions/CLAUDE.md</td><td>处理该目录文件时叠加生效</td></tr>
+</table>
+<ul>
+<li>冲突时<b>更具体者优先</b>：子目录 > 项目 > 用户</li>
+<li>内容原则：短、具体、多禁令；只写「不写就会做错」的内容</li>
+<li><code class="inline">.claudeignore</code> 排除不该读的路径（大型资产、密钥目录）</li>
+<li>企业管理策略（operator 设置）用户默认<b>不可覆盖</b>——「用户能覆盖管理员设置吗」这类题答案基本都是「不能」</li>
+</ul>
+
+<h3>2. Skills 与渐进式加载</h3>
+<ul>
+<li>结构：<code class="inline">.claude/skills/name/SKILL.md</code>，frontmatter 必含 <b>name + description</b></li>
+<li><b>description 决定触发</b>——模型平时只见 description 这一行，靠它判断是否加载正文；写明「什么时候使用本技能」</li>
+<li><b>三级加载</b>：平时只挂 description（近零成本）→ 任务匹配读正文 → 需要时才读附件资源。考题问「大型参考表放哪」→ 附件文件，不进 SKILL.md 正文更不进 CLAUDE.md</li>
+</ul>
+
+<h3>3. Subagents 与 Hooks</h3>
+<ul>
+<li>Subagent = markdown 文件（<code class="inline">.claude/agents/</code>）：frontmatter 定 name/description/<b>tools 白名单</b>，正文是它的系统提示词。description 决定何时被自动委派；tools 限权是硬边界</li>
+<li>Hooks 配置在 settings.json：<b>PreToolUse</b>（动作前，可拦截）/ <b>PostToolUse</b>（动作后）/ <b>Stop</b>(回合结束)等时机</li>
+<li><b>退出码约定（高频考点）</b>：钩子命令退出码 <code class="inline">0</code> = 放行；<code class="inline">2</code> = <b>阻断该操作</b>并把 stderr 反馈给模型。「如何强制禁止改 .env」→ PreToolUse 钩子匹配后以退出码 2 拦截</li>
+<li>CLAUDE.md 是<b>引导</b>（模型尽力遵守），Hook 是<b>强制</b>（必然执行）——安全红线用 Hook</li>
+</ul>
+
+<h3>4. 模式与 CI/CD</h3>
+<ul>
+<li><b>Plan Mode</b>：只读分析模式，产出计划待批准。大改动前、摸底陌生代码库时用</li>
+<li><b>无头模式</b> <code class="inline">claude -p "任务"</code>：非交互执行，输出后退出;<code class="inline">--output-format json</code> 供程序消费。CI/CD 集成的标准形态（如 PR 自动审查、流水线里的自动修复）</li>
+<li>自定义斜杠命令：<code class="inline">.claude/commands/</code> 下的 markdown 文件，团队可通过 Git 分发统一工作流</li>
+</ul>
+`,
+en:`
+<h3>1. CLAUDE.md levels & precedence (the exam gets picky here)</h3>
+<table>
+<tr><th>Level</th><th>Location</th><th>Scope</th></tr>
+<tr><td>User</td><td>~/.claude/CLAUDE.md</td><td>All your projects</td></tr>
+<tr><td>Project</td><td>CLAUDE.md at repo root</td><td>Everyone on the project (shared via Git)</td></tr>
+<tr><td>Subdirectory</td><td>e.g. functions/CLAUDE.md</td><td>Layered in when working on files there</td></tr>
+</table>
+<ul>
+<li>On conflict, <b>more specific wins</b>: subdirectory > project > user</li>
+<li>Content principle: short, concrete, prohibition-heavy; only what would go wrong without it</li>
+<li><code class="inline">.claudeignore</code> excludes paths that shouldn't be read (large assets, secrets directories)</li>
+<li>Enterprise managed policy (operator-set) is <b>not user-overridable</b> by default — "can the user override the admin setting?" questions almost always answer "no"</li>
+</ul>
+
+<h3>2. Skills & progressive disclosure</h3>
+<ul>
+<li>Structure: <code class="inline">.claude/skills/name/SKILL.md</code>; frontmatter must include <b>name + description</b></li>
+<li><b>The description controls triggering</b> — normally the model sees only that line and decides from it whether to load the body; spell out "when to use this skill"</li>
+<li><b>Three loading tiers</b>: description only (near-zero cost) → body on task match → resources on demand. "Where does the big reference table go?" → a resource file — not the SKILL.md body, and definitely not CLAUDE.md</li>
+</ul>
+
+<h3>3. Subagents & hooks</h3>
+<ul>
+<li>A subagent = a markdown file (<code class="inline">.claude/agents/</code>): frontmatter sets name/description/<b>tools allowlist</b>; the body is its system prompt. The description drives auto-delegation; the tools list is a hard boundary</li>
+<li>Hooks live in settings.json: <b>PreToolUse</b> (before, can block) / <b>PostToolUse</b> (after) / <b>Stop</b> (turn end), etc.</li>
+<li><b>Exit-code convention (hot topic)</b>: hook exit code <code class="inline">0</code> = allow; <code class="inline">2</code> = <b>block the action</b> and feed stderr back to the model. "How to hard-forbid editing .env" → a PreToolUse hook exiting 2 on match</li>
+<li>CLAUDE.md <b>guides</b> (best effort); hooks <b>enforce</b> (always run) — safety red lines use hooks</li>
+</ul>
+
+<h3>4. Modes & CI/CD</h3>
+<ul>
+<li><b>Plan Mode</b>: read-only analysis producing a plan for approval. Use before big changes or when scoping unfamiliar code</li>
+<li><b>Headless</b> <code class="inline">claude -p "task"</code>: non-interactive, prints and exits; <code class="inline">--output-format json</code> for machine consumption. The standard shape for CI/CD (auto PR review, in-pipeline fixes)</li>
+<li>Custom slash commands: markdown files under <code class="inline">.claude/commands/</code>, distributed to the team via Git for uniform workflows</li>
+</ul>
+`},
+traps:{zh:[
+"层级优先级答反（记死：越具体越优先，子目录 > 项目 > 用户）",
+"「把安全规则写进 CLAUDE.md 就万无一失」——CLAUDE.md 是引导不是强制；硬约束必须 Hook（退出码 2 拦截）",
+"大型参考资料塞进 CLAUDE.md 或 SKILL.md 正文——应做成技能附件按需加载",
+"CI/CD 题里选交互模式——非交互场景的标准答案是 -p（无头）+ 结构化输出"
+],en:[
+"Reversing precedence (burn it in: more specific wins — subdirectory > project > user)",
+"'Safety rules in CLAUDE.md are enough' — CLAUDE.md guides, it doesn't enforce; hard constraints need hooks (exit code 2 blocks)",
+"Stuffing large references into CLAUDE.md or the SKILL.md body — they belong in skill resources, loaded on demand",
+"Choosing interactive mode in CI/CD questions — the standard answer for non-interactive contexts is -p (headless) + structured output"
+]},
+});
+
+DOMAINS.push({
+id:"d4", weight:20, color:"var(--d4)", minutes:35,
+title:{zh:"D4 · 提示工程与结构化输出", en:"D4 · Prompt Engineering & Structured Output"},
+tests:{
+ zh:["生产级系统提示的结构：角色/规则/工具说明/输出契约","XML 标签组织、少样本示例（few-shot）的正确用法","结构化输出三招：JSON Schema / 工具式抽取 / 预填充","自我纠正循环：schema 校验失败 → 连同错误回喂重试"],
+ en:["Production system-prompt structure: role / rules / tool notes / output contract","XML-tag organization and correct few-shot usage","Three structured-output moves: JSON schema / tool-based extraction / prefill","The self-correction loop: schema validation fails → feed the error back and retry"]
+},
+body:{zh:`
+<h3>1. 生产级提示的骨架</h3>
+<pre>&lt;role&gt;         你是谁、服务于什么系统
+&lt;rules&gt;        编号的行为规则，禁令写足（禁止编造、禁止越权……）
+&lt;tools_notes&gt;  每个工具何时用/何时不用
+&lt;output&gt;       输出契约：格式、语言、长度、禁止事项
+&lt;examples&gt;     1-3 个高质量示例（few-shot）</pre>
+<ul>
+<li><b>XML 标签</b>是 Claude 的推荐组织方式:清晰分节、易引用、防指令与数据混淆（用户数据用 <code class="inline">&lt;user_input&gt;</code> 包裹与指令隔离——这也是防提示注入的第一道墙）</li>
+<li><b>few-shot 的正确姿势</b>：示例展示的是<b>格式与边界情况</b>，不是知识；1-3 个多样化的好例子 > 10 个雷同例子；示例必须与规则一致（示例和规则打架时模型常跟示例走——考题爱挖这个坑）</li>
+<li>让模型先想后答：复杂判断让它先在 <code class="inline">&lt;thinking&gt;</code> 里推理再给结论，或开启扩展思考</li>
+</ul>
+
+<h3>2. 结构化输出三板斧（选型是考点）</h3>
+<table>
+<tr><th>方法</th><th>做法</th><th>什么时候用</th></tr>
+<tr><td><b>提示词约定 + Schema</b></td><td>提示里给出 JSON Schema，要求只输出 JSON</td><td>简单结构；配合代码侧校验</td></tr>
+<tr><td><b>工具式抽取</b></td><td>定义一个「提交结果」工具，参数即目标 schema，强制模型以工具调用形式输出</td><td>生产级抽取的首选：格式由 API 层保证，最可靠</td></tr>
+<tr><td><b>预填充 Prefill</b></td><td>把 assistant 回复的开头预填为 <code class="inline">{</code></td><td>轻量招式：跳过客套话、锁定 JSON 开局</td></tr>
+</table>
+
+<h3>3. 校验与自我纠正循环（必考）</h3>
+<p>黄金原则：<b>模型负责生成，代码负责校验。</b>永远不要「相信」模型输出合法——用 JSON Schema 校验器把关。失败时的标准架构：</p>
+<pre>生成 → 代码校验(schema)
+        ├─ 通过 → 下游使用
+        └─ 失败 → 把「原输出 + 具体校验错误」一起回喂模型
+                   要求修正 → 重新校验（设最大重试次数，如 2-3 次）
+                   仍失败 → 降级路径（人工队列/默认值/报警）</pre>
+<div class="keypt">✅ 回喂时必须带上<b>具体错误信息</b>（缺哪个字段、哪个类型不对），模型才能精准修正——这就是「自我纠正/self-correction」模式，D4 和 D5 都会考它。同时注意：重试有上限、上限后有降级路径，两个要素缺一不可。</div>
+
+<h3>4. 抽取任务的实用细节</h3>
+<ul>
+<li>字段定义要杜绝歧义：日期格式（ISO 8601）、货币单位、空值语义（null vs 空串 vs 字段缺失）逐一钉死</li>
+<li>允许模型说「不知道」：schema 里给 null/unknown 出口，否则它会为了填满字段而编造</li>
+<li>温度调低（如 0）用于抽取类任务，输出更稳定</li>
+</ul>
+`,
+en:`
+<h3>1. The production prompt skeleton</h3>
+<pre>&lt;role&gt;         who you are, what system you serve
+&lt;rules&gt;        numbered behavior rules, prohibitions in full
+               (never invent, never exceed authority…)
+&lt;tools_notes&gt;  when to use / not use each tool
+&lt;output&gt;       the output contract: format, language, length, bans
+&lt;examples&gt;     1-3 high-quality examples (few-shot)</pre>
+<ul>
+<li><b>XML tags</b> are Claude's recommended organization: clean sections, easy referencing, and instruction/data separation (wrap user data in <code class="inline">&lt;user_input&gt;</code> — also the first wall against prompt injection)</li>
+<li><b>Few-shot done right</b>: examples demonstrate <b>format and edge cases</b>, not knowledge; 1-3 diverse good examples beat 10 near-duplicates; examples must agree with the rules (when they conflict, models tend to follow the examples — a favorite exam pitfall)</li>
+<li>Think before answering: for complex judgment, have it reason in <code class="inline">&lt;thinking&gt;</code> first, or enable extended thinking</li>
+</ul>
+
+<h3>2. The three structured-output moves (selection is tested)</h3>
+<table>
+<tr><th>Method</th><th>How</th><th>When</th></tr>
+<tr><td><b>Prompted schema</b></td><td>Provide a JSON Schema in the prompt; demand JSON-only output</td><td>Simple structures; paired with code-side validation</td></tr>
+<tr><td><b>Tool-based extraction</b></td><td>Define a "submit result" tool whose parameters ARE the target schema; force output as a tool call</td><td>First choice for production extraction: format guaranteed at the API layer, most reliable</td></tr>
+<tr><td><b>Prefill</b></td><td>Pre-fill the assistant reply starting with <code class="inline">{</code></td><td>Lightweight: skips pleasantries, locks the JSON opening</td></tr>
+</table>
+
+<h3>3. Validation & the self-correction loop (guaranteed exam material)</h3>
+<p>Golden rule: <b>the model generates; code validates.</b> Never "trust" output legality — gate it with a JSON Schema validator. On failure, the standard architecture:</p>
+<pre>generate → code validates (schema)
+        ├─ pass → downstream use
+        └─ fail → feed back "original output + the specific
+                  validation errors", demand a fix → re-validate
+                  (cap retries, e.g. 2-3)
+                  still failing → degradation path
+                  (human queue / defaults / alert)</pre>
+<div class="keypt">✅ The feedback must include the <b>specific errors</b> (which field is missing, which type is wrong) so the model can fix precisely — this is the self-correction pattern, tested in both D4 and D5. Note both required elements: a retry cap AND a degradation path beyond it.</div>
+
+<h3>4. Extraction fine print</h3>
+<ul>
+<li>Kill ambiguity in field definitions: date format (ISO 8601), currency units, null semantics (null vs empty string vs absent) — nail each one</li>
+<li>Let the model say "unknown": give null/unknown escape hatches in the schema, or it will invent to fill fields</li>
+<li>Lower temperature (e.g. 0) for extraction tasks — steadier output</li>
+</ul>
+`},
+traps:{zh:[
+"「提示里写了『只输出 JSON』就够了」——没有代码侧 schema 校验的方案在本考试里永远不是最佳答案",
+"重试循环只回喂「格式错误请重试」而不带具体错误——正确答案总是包含具体校验错误回喂",
+"few-shot 示例与规则冲突、或示例全是同一种情况（缺边界样本）",
+"schema 不给 null/unknown 出口，逼模型编造来填满字段"
+],en:[
+"'The prompt says JSON-only, that's enough' — options without code-side schema validation are never the best answer on this exam",
+"Retry loops that feed back only 'format error, retry' without specifics — correct answers always include the concrete validation errors",
+"Few-shot examples conflicting with the rules, or all showing the same case (no edge samples)",
+"Schemas without null/unknown escape hatches, forcing the model to invent fillers"
+]},
+});
+
+DOMAINS.push({
+id:"d5", weight:15, color:"var(--d5)", minutes:30,
+title:{zh:"D5 · 上下文管理与可靠性", en:"D5 · Context Management & Reliability"},
+tests:{
+ zh:["上下文窗口经济学与「中间迷失」效应","Prompt Caching 的资格规则与摆放策略","Batch API 的适用场景（省 50%，24 小时窗口）","长对话压缩、多智能体交接、错误传播与人工升级"],
+ en:["Context-window economics and the lost-in-the-middle effect","Prompt caching eligibility rules and placement strategy","When the Batch API fits (50% savings, 24-hour window)","Long-conversation compaction, multi-agent handoffs, error propagation and human escalation"]
+},
+body:{zh:`
+<h3>1. 上下文窗口经济学</h3>
+<ul>
+<li>上下文 = 钱 + 质量：塞得越多越贵，且<span class="term">中间迷失（lost in the middle）</span>——长上下文的<b>中段</b>内容最容易被忽略。关键指令放<b>开头</b>，关键材料放开头或<b>结尾</b>，别埋中间</li>
+<li>长文档任务的摆放惯例：<b>大文档在前，问题/指令在后</b></li>
+<li>检索增强（RAG）思想：与其把整个知识库塞进上下文，不如按需检索相关片段（分块→向量化→检索；关键词 BM25 与语义检索可混合）</li>
+</ul>
+
+<h3>2. Prompt Caching（资格规则是高频考点）</h3>
+<ul>
+<li>原理：把提示的<b>稳定前缀</b>（系统提示、工具定义、大文档）缓存，后续请求命中缓存大幅降本提速</li>
+<li><b>资格规则</b>：缓存按<b>前缀</b>匹配——从头开始逐字一致才命中。所以：<b>稳定内容放前面，可变内容放后面</b>；前缀中任何一字变化（哪怕改一个工具描述）= 缓存失效</li>
+<li>典型考题：「系统提示里嵌了当前时间戳导致缓存永远不命中」→ 把动态内容移出稳定前缀</li>
+<li>适合：同一套大提示被高频复用（客服、批量抽取）。缓存有时效（分钟级 TTL，可刷新），冷门低频调用收益小</li>
+</ul>
+
+<h3>3. Batch API</h3>
+<ul>
+<li>特征：<b>省约 50% 成本</b>，代价是<b>异步、最长 24 小时内返回</b></li>
+<li>适合：不赶时间的批量任务（夜间跑 10 万条数据抽取、批量评估、报告生成）</li>
+<li>不适合：任何交互式/实时场景。考题给「用户在线等回复」的场景配 Batch 方案 = 错误选项</li>
+</ul>
+
+<h3>4. 长对话与多智能体的可靠性</h3>
+<ul>
+<li><b>压缩（compaction）</b>：对话接近窗口上限时，把历史压成结构化摘要继续——保留决策、约束与未完成项，丢弃闲聊过程</li>
+<li><b>交接（handoff）</b>：agent A 转 agent B 时传<b>结构化状态</b>（目标、已完成、待办、约束），不是转储全部聊天记录</li>
+<li><b>错误传播</b>：多级流水线里上游的小错会被下游放大——在阶段边界设校验关卡，尽早拦截</li>
+<li><b>置信度与升级</b>：让模型输出置信度/标注不确定项;低置信 or 高风险 → <b>升级人工（escalation）</b>。「全自动处理一切」的选项在本考试几乎总是错的</li>
+</ul>
+<div class="keypt">✅ D5 只占 15%，但它的概念（缓存、校验、升级、可靠性优先）会<b>渗透进其它四个域的场景题</b>里——这是官方指南明确提醒过的。别因为权重小就跳过。</div>
+`,
+en:`
+<h3>1. Context-window economics</h3>
+<ul>
+<li>Context = money + quality: more tokens cost more, and <span class="term">lost in the middle</span> means <b>mid-context</b> content is most easily ignored. Critical instructions go <b>first</b>; critical material goes first or <b>last</b> — never buried mid-way</li>
+<li>Long-document convention: <b>big document first, question/instructions last</b></li>
+<li>RAG thinking: instead of stuffing a whole knowledge base into context, retrieve relevant chunks on demand (chunk → embed → retrieve; keyword BM25 can hybridize with semantic search)</li>
+</ul>
+
+<h3>2. Prompt caching (eligibility rules are a hot topic)</h3>
+<ul>
+<li>Principle: cache the prompt's <b>stable prefix</b> (system prompt, tool definitions, big documents); subsequent hits are far cheaper and faster</li>
+<li><b>Eligibility</b>: caching matches by <b>prefix</b> — identical from the very start, or no hit. Therefore: <b>stable content first, variable content last</b>; a single changed character in the prefix (even one tool description) = cache bust</li>
+<li>Classic question: "a timestamp embedded in the system prompt means the cache never hits" → move dynamic content out of the stable prefix</li>
+<li>Fits: one large prompt reused at high frequency (support, batch extraction). Caches have minute-scale TTLs (refreshable); low-frequency calls gain little</li>
+</ul>
+
+<h3>3. The Batch API</h3>
+<ul>
+<li>Profile: <b>~50% cost savings</b>, in exchange for <b>async completion within up to 24 hours</b></li>
+<li>Fits: non-urgent bulk work (overnight extraction of 100k records, batch evals, report generation)</li>
+<li>Doesn't fit: anything interactive/real-time. An option pairing "user waiting online" with Batch = a wrong option</li>
+</ul>
+
+<h3>4. Long-conversation & multi-agent reliability</h3>
+<ul>
+<li><b>Compaction</b>: near the window limit, compress history into a structured summary — keep decisions, constraints and open items; drop chatter</li>
+<li><b>Handoffs</b>: agent A → agent B passes <b>structured state</b> (goal, done, todo, constraints), not a full transcript dump</li>
+<li><b>Error propagation</b>: small upstream errors amplify downstream in multi-stage pipelines — put validation gates at stage boundaries, catch early</li>
+<li><b>Confidence & escalation</b>: have the model emit confidence / flag uncertainty; low confidence or high stakes → <b>escalate to a human</b>. "Fully automate everything" options are almost always wrong on this exam</li>
+</ul>
+<div class="keypt">✅ D5 is only 15%, but its concepts (caching, validation, escalation, reliability-first) <b>bleed into the other four domains' scenarios</b> — the official guide explicitly warns about this. Don't skip it for being small.</div>
+`},
+traps:{zh:[
+"动态内容（时间戳、用户 ID）混进稳定前缀导致缓存永不命中——考题最爱",
+"给实时交互场景配 Batch API（24 小时窗口 = 不适合在线等待）",
+"多智能体交接转储全部聊天记录（应传结构化状态摘要）",
+"「低置信度也继续全自动」——正确答案里低置信/高风险必有人工升级出口"
+],en:[
+"Dynamic content (timestamps, user IDs) mixed into the stable prefix so the cache never hits — the exam's favorite",
+"Pairing Batch API with real-time interaction (a 24-hour window can't serve someone waiting online)",
+"Multi-agent handoffs that dump full transcripts (pass structured state summaries instead)",
+"'Proceed fully automated even at low confidence' — correct answers always include a human escalation exit for low-confidence/high-stakes cases"
+]},
+});
+
+/* ================= QUESTION BANK (scenario-based) ================= */
+/* d: domain id; scen: scenario context label; correct: index 0-3 */
+
+QBANK.push(
+{d:"d1",scen:{zh:"场景：客服解决智能体",en:"Scenario: Customer Support Resolution Agent"},
+stem:{zh:"你为电商公司设计客服系统。需求：① 按工单类型（退款/物流/产品咨询）走完全不同的处理流程 ② 每类流程的步骤是固定且已知的。最合适的架构是？",en:"You're designing support automation for an e-commerce firm. Requirements: ① tickets route to completely different handling flows by type (refund/logistics/product) ② each flow's steps are fixed and known. Best architecture?"},
+opts:[
+{zh:"一个全能 Agent，配齐所有工具让它自由发挥",en:"One omnipotent agent with every tool, free to improvise"},
+{zh:"Routing 分类 + 每类各一条固定 Workflow",en:"Routing classifier + one fixed workflow per type"},
+{zh:"Orchestrator-Worker 动态拆解每张工单",en:"Orchestrator-worker dynamically decomposing every ticket"},
+{zh:"Evaluator-Optimizer 循环打磨每个回复",en:"An evaluator-optimizer loop polishing every reply"}],
+correct:1,
+exp:{zh:"步骤固定且已知 = 不需要 Agent 的自主性。先路由分类、再走各自固定流程，是最简且最可靠的满足方案。「更强大」的 O-W 在这里是过度设计。",en:"Fixed, known steps = no need for agent autonomy. Route first, then fixed per-type workflows — the simplest reliable fit. The 'more capable' O-W is over-engineering here."}},
+
+{d:"d1",scen:{zh:"场景：多智能体研究系统",en:"Scenario: Multi-Agent Research System"},
+stem:{zh:"研究系统接到开放式课题：「评估东南亚 POS 市场机会」。需要调查的子课题数量与内容事先无法确定，需按初步发现动态展开。应选哪种编排？",en:"A research system receives an open brief: 'assess the SEA POS market opportunity'. The number and content of sub-investigations can't be known upfront and must unfold based on early findings. Which orchestration?"},
+opts:[
+{zh:"Prompt Chaining：固定 5 步串行",en:"Prompt chaining: a fixed 5-step series"},
+{zh:"Parallelization：预设 4 个子题并行跑",en:"Parallelization: 4 predefined subtopics in parallel"},
+{zh:"Orchestrator-Worker：协调者按发现动态派发子任务",en:"Orchestrator-worker: a coordinator dispatching subtasks dynamically as findings emerge"},
+{zh:"单一长上下文对话把资料全部塞进去",en:"One long-context conversation stuffed with everything"}],
+correct:2,
+exp:{zh:"「子任务无法预知、需动态展开」是 O-W 的教科书信号。并行要求子任务预先固定；链式要求步骤固定——都不满足。",en:"'Subtasks unknowable upfront, unfolding dynamically' is the textbook O-W signal. Parallelization needs predefined subtasks; chaining needs fixed steps — neither fits."}},
+
+{d:"d1",scen:{zh:"场景：多智能体研究系统",en:"Scenario: Multi-Agent Research System"},
+stem:{zh:"O-W 研究系统上线后成本爆炸。排查发现每个 worker 都把「读过的全部原文」回传给 orchestrator。首要修复是？",en:"After launch, the O-W research system's costs explode. You find every worker returns 'all raw material it read' to the orchestrator. The primary fix?"},
+opts:[
+{zh:"换更便宜的模型跑 orchestrator",en:"Run the orchestrator on a cheaper model"},
+{zh:"要求 worker 只回传结论式摘要，原始材料留在各自上下文",en:"Workers return conclusion-style summaries only; raw material stays in their own contexts"},
+{zh:"减少 worker 数量到 1 个",en:"Cut workers down to one"},
+{zh:"把所有结果先存数据库再读回来",en:"Store all results in a database and read them back"}],
+correct:1,
+exp:{zh:"这是典型的上下文泄漏：worker 的中间材料涌入主上下文造成膨胀。上下文隔离 + 结论式汇报是 subagent 架构的核心纪律。",en:"Classic context leakage: worker intermediates flooding the main context. Context isolation + conclusion-style reporting is the core subagent discipline."}},
+
+{d:"d1",scen:{zh:"场景：客服解决智能体",en:"Scenario: Customer Support Resolution Agent"},
+stem:{zh:"客服 Agent 可以调用 issue_refund 工具直接给客户退款。上线前评审，最应该补上的一道防线是？",en:"The support agent can call an issue_refund tool that directly refunds customers. In pre-launch review, the most important missing safeguard?"},
+opts:[
+{zh:"给退款动作设人工审批门（超过阈值必须人批）",en:"A human-approval gate on refunds (mandatory above a threshold)"},
+{zh:"把系统提示写得更有礼貌",en:"Make the system prompt more polite"},
+{zh:"提高模型温度增加灵活性",en:"Raise temperature for flexibility"},
+{zh:"给 Agent 更多工具让它自己权衡",en:"Give the agent more tools to weigh options itself"}],
+correct:0,
+exp:{zh:"高风险动作（花钱、写生产数据、发外部消息）必须有 human-in-the-loop 门。这是 D1 失控防护的固定考点。",en:"High-stakes actions (money, production writes, external messages) require a human-in-the-loop gate — a fixed D1 runaway-protection point."}},
+
+{d:"d1",scen:{zh:"场景：结构化数据抽取",en:"Scenario: Structured Data Extraction"},
+stem:{zh:"任务：每晚把 5 万份 PDF 发票抽取成 JSON 入库。字段固定、流程固定、无需临场判断。同事提议用多智能体系统，你应该？",en:"Task: nightly extraction of 50k PDF invoices into JSON. Fields fixed, process fixed, no in-the-moment judgment. A colleague proposes a multi-agent system. You should?"},
+opts:[
+{zh:"同意，多智能体代表更先进",en:"Agree — multi-agent is more advanced"},
+{zh:"反对：确定性流水线（Workflow）+ 单次抽取调用即可，Agent 徒增成本与不确定性",en:"Push back: a deterministic pipeline (workflow) with single extraction calls suffices; agents add cost and nondeterminism"},
+{zh:"折中：每份发票开一个 agent 循环",en:"Compromise: one agent loop per invoice"},
+{zh:"先上多智能体再看数据",en:"Ship multi-agent first, look at data later"}],
+correct:1,
+exp:{zh:"能画出确定流程图的任务用 Workflow。5 万份 × agent 循环 = 巨额 token 且引入不必要的非确定性。「最简够用」永远优先。",en:"If you can draw the flowchart, use a workflow. 50k × agent loops = massive tokens plus needless nondeterminism. Simplest-sufficient always wins."}},
+
+{d:"d1",scen:{zh:"场景：开发者生产力",en:"Scenario: Developer Productivity with Claude"},
+stem:{zh:"一个自动修 bug 的 agent 偶尔陷入「改→测→再改」无限循环，单次任务烧掉数百万 token。最直接的架构级修复是？",en:"An auto-bugfix agent occasionally spirals in an edit→test→edit loop, burning millions of tokens per task. The most direct architectural fix?"},
+opts:[
+{zh:"在提示里恳求它「不要循环太多次」",en:"Plead in the prompt: 'don't loop too many times'"},
+{zh:"设置硬性终止条件：最大迭代次数 + 预算上限，触顶转人工",en:"Hard stop conditions: max iterations + budget cap, escalating to a human at the ceiling"},
+{zh:"换一个更大的模型",en:"Switch to a bigger model"},
+{zh:"删掉测试步骤避免反复",en:"Remove the test step to avoid repetition"}],
+correct:1,
+exp:{zh:"失控防护要用硬约束而非软恳求：终止条件（迭代/预算）+ 升级路径。删验证步骤是「省钱引入失败模式」的典型错误选项。",en:"Runaway protection needs hard constraints, not soft pleas: stop conditions (iterations/budget) + an escalation path. Deleting verification is the classic 'savings that introduce a failure mode' wrong option."}},
+
+{d:"d1",scen:{zh:"场景：代码生成",en:"Scenario: Code Generation with Claude Code"},
+stem:{zh:"需求：同一份 PR 需要安全审查、性能审查、规范审查三份独立报告，三者互不依赖。最优执行方式？",en:"Requirement: one PR needs three independent reports — security, performance and conventions — none depending on another. Optimal execution?"},
+opts:[
+{zh:"一个 agent 按顺序做三种审查",en:"One agent doing the three reviews sequentially"},
+{zh:"三个专职 subagent 并行审查，主会话汇总",en:"Three specialist subagents in parallel, main session synthesizes"},
+{zh:"Orchestrator-Worker 动态决定审几项",en:"O-W dynamically deciding how many reviews to run"},
+{zh:"三次审查合并进一个超长提示一次完成",en:"Merge all three into one giant prompt in a single pass"}],
+correct:1,
+exp:{zh:"子任务预先确定且互相独立 = Parallelization 教科书场景。O-W 用于子任务不可预知的情况；这里审查项是定死的三项。",en:"Predefined, independent subtasks = textbook parallelization. O-W is for unknowable subtasks; here the three reviews are fixed."}},
+
+{d:"d1",scen:{zh:"场景：客服解决智能体",en:"Scenario: Customer Support Resolution Agent"},
+stem:{zh:"两个方案：A. Agent 每次回复前额外调用一次「政策核对」验证步骤，成本 +15%；B. 去掉验证步骤省 15%，靠提示词叮嘱它遵守政策。考试视角下应选？",en:"Two options: A. the agent runs an extra 'policy check' verification step per reply, +15% cost; B. drop the step to save 15% and rely on prompt admonitions. Which does the exam favor?"},
+opts:[
+{zh:"B：成本优化优先",en:"B: cost optimization first"},
+{zh:"A：可靠性优先，验证步骤保留",en:"A: reliability first, keep the verification step"},
+{zh:"都不选，直接下线该功能",en:"Neither — kill the feature"},
+{zh:"抛硬币",en:"Flip a coin"}],
+correct:1,
+exp:{zh:"官方风格明确：省钱方案若引入失败模式（政策违规风险）就是错误选项。可靠性第一，预算第二。",en:"The exam's stated style: a cost-saver that introduces a failure mode (policy-violation risk) is the wrong option. Reliability first, budget second."}},
+
+/* ---- D2 ---- */
+{d:"d2",scen:{zh:"场景：多智能体研究系统",en:"Scenario: Multi-Agent Research System"},
+stem:{zh:"你在做研究系统的 MCP 服务器。「公司内部报告库的只读全文」应该暴露为？",en:"Building the research system's MCP server: 'read-only full text of the internal report library' should be exposed as?"},
+opts:[
+{zh:"Tool，因为模型要主动去拿",en:"A tool, since the model actively fetches it"},
+{zh:"Resource：无副作用的可读数据",en:"A resource: side-effect-free readable data"},
+{zh:"Prompt 模板",en:"A prompt template"},
+{zh:"写进系统提示词",en:"Hard-coded into the system prompt"}],
+correct:1,
+exp:{zh:"判断法：有动作/副作用 → tool；纯数据供读取 → resource。只读文库是典型 resource。",en:"The test: action/side effects → tool; pure readable data → resource. A read-only library is the textbook resource."}},
+
+{d:"d2",scen:{zh:"场景：客服解决智能体",en:"Scenario: Customer Support Resolution Agent"},
+stem:{zh:"客服 agent 接了一个 MCP 服务器，暴露 42 个工具（search_orders_v1、find_order、query_orders、lookup_order_by_id……）。agent 频繁选错工具。根因与修复？",en:"The support agent connects to an MCP server exposing 42 tools (search_orders_v1, find_order, query_orders, lookup_order_by_id…). It keeps picking wrong tools. Root cause & fix?"},
+opts:[
+{zh:"模型太笨，换大模型",en:"The model is weak — upgrade it"},
+{zh:"推理过载：合并重叠工具、清晰命名、精写 description",en:"Reasoning overload: merge overlapping tools, name clearly, sharpen descriptions"},
+{zh:"再加 20 个更细分的工具",en:"Add 20 more finer-grained tools"},
+{zh:"把工具随机排序",en:"Shuffle the tool order"}],
+correct:1,
+exp:{zh:"大量重叠含糊的工具直接推高选错率。D2 灵魂：少而精 + description 即接口契约。",en:"Many overlapping, vague tools directly raise wrong-choice rates. D2's soul: few-and-sharp + descriptions as the interface contract."}},
+
+{d:"d2",scen:{zh:"场景：结构化数据抽取",en:"Scenario: Structured Data Extraction"},
+stem:{zh:"query_sales 工具直接把 8 万行 SQL 原始结果返回给模型，导致上下文爆炸且回答质量下降。最佳修复？",en:"The query_sales tool returns 80k raw SQL rows straight to the model, exploding context and degrading answers. Best fix?"},
+opts:[
+{zh:"让模型「自己挑重点看」",en:"Tell the model to 'skim for what matters'"},
+{zh:"工具侧先聚合/分页/截断，返回为模型设计的精炼结构化结果",en:"Aggregate/paginate/truncate server-side; return concise, structured, model-oriented results"},
+{zh:"扩大上下文窗口",en:"Buy a bigger context window"},
+{zh:"改成每次只查一行",en:"Query one row at a time"}],
+correct:1,
+exp:{zh:"「返回值要为模型设计」：工具应输出精炼、语义化的结果，聚合在工具侧完成，而不是把整理负担丢给模型的上下文。",en:"'Design return values for the model': tools should emit concise, semantic results with aggregation done server-side — not dump the burden into the model's context."}},
+
+{d:"d2",scen:{zh:"场景：开发者生产力",en:"Scenario: Developer Productivity with Claude"},
+stem:{zh:"要为全公司 200 名员工提供一个连接内部工单系统的 MCP 服务，需要按员工身份区分权限。传输与鉴权应选？",en:"You must serve 200 employees with an MCP connection to the internal ticketing system, with per-employee permissions. Transport & auth?"},
+opts:[
+{zh:"stdio，本地各跑一份免鉴权",en:"stdio, one local copy each, no auth"},
+{zh:"HTTP 远程服务 + OAuth 用户级授权",en:"A remote HTTP service + OAuth per-user authorization"},
+{zh:"共享一个万能 API Key 写进配置",en:"One shared master API key in the config"},
+{zh:"每人手动复制粘贴数据",en:"Everyone copy-pastes manually"}],
+correct:1,
+exp:{zh:"远程多用户 + 身份区分 = HTTP 传输 + OAuth。stdio 面向本地个人进程；共享万能 Key 违反最小权限与审计要求。",en:"Remote multi-user with identity = HTTP transport + OAuth. stdio is for local personal processes; a shared master key violates least privilege and auditability."}},
+
+{d:"d2",scen:{zh:"场景：代码生成",en:"Scenario: Code Generation with Claude Code"},
+stem:{zh:"审计发现：代码审查用 subagent 挂载的 MCP 文件工具拥有整个磁盘的写权限。正确的整改是？",en:"Audit finding: the code-review subagent's MCP file tool has write access to the entire disk. Correct remediation?"},
+opts:[
+{zh:"没关系，它只是审查用不到写",en:"Fine — it's review-only, it won't use writes"},
+{zh:"按最小权限收紧：只读工具 + 限定项目目录",en:"Tighten to least privilege: read-only tools scoped to the project directory"},
+{zh:"写一条 CLAUDE.md 请它别乱写",en:"Add a CLAUDE.md line asking it nicely not to write"},
+{zh:"换个名字叫 safe_writer",en:"Rename it safe_writer"}],
+correct:1,
+exp:{zh:"「用不到 ≠ 不该有」。权限以能力边界而非意图约束：审查角色配只读 + 目录限定。CLAUDE.md 是引导不是强制。",en:"'Won't use it' ≠ 'shouldn't have it'. Constrain by capability boundary, not intent: review roles get read-only, directory-scoped tools. CLAUDE.md guides; it doesn't enforce."}},
+
+/* ---- D3 ---- */
+{d:"d3",scen:{zh:"场景：代码生成",en:"Scenario: Code Generation with Claude Code"},
+stem:{zh:"用户级 CLAUDE.md 写「注释用英文」，项目级写「注释用中文」，子目录 functions/CLAUDE.md 写「本目录注释用马来文」。在 functions/ 下改文件时注释语言是？",en:"User CLAUDE.md says 'comment in English', project says 'comment in Chinese', functions/CLAUDE.md says 'comment in Malay here'. Editing a file under functions/, comments will be in?"},
+opts:[
+{zh:"英文",en:"English"},{zh:"中文",en:"Chinese"},{zh:"马来文",en:"Malay"},{zh:"三种混合",en:"A mix of all three"}],
+correct:2,
+exp:{zh:"优先级：越具体越优先——子目录 > 项目 > 用户。functions/ 下子目录规则生效。",en:"Precedence: most specific wins — subdirectory > project > user. Under functions/, the subdirectory rule applies."}},
+
+{d:"d3",scen:{zh:"场景：CI/CD 集成",en:"Scenario: Claude Code for CI/CD"},
+stem:{zh:"要在 GitHub Actions 里让 Claude Code 自动审查每个 PR 并输出机器可读结果。正确调用形态是？",en:"In GitHub Actions, Claude Code must auto-review every PR and emit machine-readable results. Correct invocation shape?"},
+opts:[
+{zh:"claude（交互模式）+ 人守着回车",en:"claude (interactive) with a human pressing Enter"},
+{zh:"claude -p \"审查本 PR 改动\" --output-format json",en:"claude -p \"review this PR diff\" --output-format json"},
+{zh:"在服务器上开着聊天窗口不关",en:"Leave a chat window open on the server"},
+{zh:"把 diff 邮件发给团队",en:"Email the diff to the team"}],
+correct:1,
+exp:{zh:"CI/CD = 非交互环境:无头 -p + 结构化输出（json）是标准形态。",en:"CI/CD = non-interactive: headless -p with structured (json) output is the standard shape."}},
+
+{d:"d3",scen:{zh:"场景：开发者生产力",en:"Scenario: Developer Productivity with Claude"},
+stem:{zh:"团队要求「AI 绝不允许修改 infra/prod/ 下的任何文件」，且必须是硬保证。正确实现？",en:"The team requires 'AI must NEVER modify anything under infra/prod/' — as a hard guarantee. Correct implementation?"},
+opts:[
+{zh:"CLAUDE.md 里写明禁令",en:"State the ban in CLAUDE.md"},
+{zh:"PreToolUse Hook 匹配该路径的 Edit/Write，命中即以退出码 2 阻断",en:"A PreToolUse hook matching Edit/Write on that path, exiting 2 to block"},
+{zh:"口头培训所有工程师",en:"Verbal training for all engineers"},
+{zh:"PostToolUse Hook 改完之后再检查",en:"A PostToolUse hook checking after the change"}],
+correct:1,
+exp:{zh:"硬保证 = Hook 强制。PreToolUse 在动作前触发、退出码 2 阻断并把 stderr 反馈给模型。PostToolUse 发生在改动之后，为时已晚；CLAUDE.md 只是引导。",en:"Hard guarantee = hook enforcement. PreToolUse fires before the action; exit code 2 blocks and feeds stderr to the model. PostToolUse is after the fact — too late; CLAUDE.md merely guides."}},
+
+{d:"d3",scen:{zh:"场景：开发者生产力",en:"Scenario: Developer Productivity with Claude"},
+stem:{zh:"你的姓名学分析规则手册有 1,600 行参考表，仅在「分析姓名」任务时需要。放哪最符合渐进式加载？",en:"Your naming-analysis manual includes a 1,600-line reference table, needed only for 'analyze a name' tasks. Where does it belong per progressive disclosure?"},
+opts:[
+{zh:"CLAUDE.md，保证永远在场",en:"CLAUDE.md, always present"},
+{zh:"SKILL.md 正文",en:"The SKILL.md body"},
+{zh:"技能文件夹内的附件资源文件，正文引用、按需读取",en:"A resource file in the skill folder, referenced by the body, read on demand"},
+{zh:"每次任务手动粘贴",en:"Paste it manually each task"}],
+correct:2,
+exp:{zh:"三级加载：description 常驻 → 正文按匹配 → 大型参考表做附件按需。塞进 CLAUDE.md 会让每个会话都背着 1,600 行。",en:"Three tiers: description resident → body on match → big tables as on-demand resources. In CLAUDE.md, every session carries 1,600 lines for nothing."}},
+
+{d:"d3",scen:{zh:"场景：代码生成",en:"Scenario: Code Generation with Claude Code"},
+stem:{zh:"你希望「每次 AI 写完代码后自动跑该文件的相关测试」。用哪种机制？",en:"You want 'after every AI code write, automatically run that file's related tests'. Which mechanism?"},
+opts:[
+{zh:"PostToolUse Hook 匹配 Edit|Write 触发测试命令",en:"A PostToolUse hook on Edit|Write triggering the test command"},
+{zh:"PreToolUse Hook",en:"A PreToolUse hook"},
+{zh:"在 CLAUDE.md 里请求它记得跑测试",en:"Ask in CLAUDE.md to please remember tests"},
+{zh:"Stop Hook",en:"A Stop hook"}],
+correct:0,
+exp:{zh:"动作之后的自动化 = PostToolUse。PreToolUse 用于事前拦截；Stop 在回合结束（可能包含多次编辑之后）才触发，粒度不对。",en:"Post-action automation = PostToolUse. PreToolUse intercepts beforehand; Stop fires at turn end (after possibly many edits) — wrong granularity."}},
+
+{d:"d3",scen:{zh:"场景：CI/CD 集成",en:"Scenario: Claude Code for CI/CD"},
+stem:{zh:"企业管理员通过受管策略禁用了某项权限。一名开发者想在自己的项目 settings 里重新打开它。结果是？",en:"An enterprise admin disabled a permission via managed policy. A developer tries re-enabling it in their project settings. Outcome?"},
+opts:[
+{zh:"项目设置更具体，成功覆盖",en:"Project settings are more specific — override succeeds"},
+{zh:"默认无法覆盖：受管策略优先于用户/项目设置",en:"No override by default: managed policy takes precedence over user/project settings"},
+{zh:"重启后随机生效",en:"Random after restart"},
+{zh:"两者同时生效",en:"Both apply simultaneously"}],
+correct:1,
+exp:{zh:"管理策略（operator 层）默认不可被下层覆盖。「用户能覆盖管理员吗」类考题答案几乎总是不能——注意这与 CLAUDE.md 内容层级的「具体优先」是两套规则。",en:"Managed (operator-level) policy is not overridable from below by default. 'Can users override admins?' almost always answers no — note this is a different rule-set from CLAUDE.md content precedence."}},
+
+/* ---- D4 ---- */
+{d:"d4",scen:{zh:"场景：结构化数据抽取",en:"Scenario: Structured Data Extraction"},
+stem:{zh:"生产环境要把客户邮件抽取成固定 JSON 结构入库，可靠性优先。最稳的输出方案？",en:"Production must extract customer emails into a fixed JSON structure for storage, reliability first. Sturdiest output approach?"},
+opts:[
+{zh:"提示词说「请尽量输出 JSON」",en:"Prompt: 'please try to output JSON'"},
+{zh:"工具式抽取：定义提交工具，参数即 schema，强制以工具调用输出",en:"Tool-based extraction: a submit tool whose parameters are the schema, forcing tool-call output"},
+{zh:"输出 markdown 表格再用正则转换",en:"Markdown tables converted by regex"},
+{zh:"让模型自由发挥再人工整理",en:"Free-form output, tidied by hand"}],
+correct:1,
+exp:{zh:"生产级抽取首选工具式：格式由 API 层结构保证。提示词约定次之且必须配代码校验；正则转 markdown 是脆弱方案。",en:"Production extraction prefers tool-based: format guaranteed by the API layer. Prompted-schema is second and needs code validation; regex-on-markdown is brittle."}},
+
+{d:"d4",scen:{zh:"场景：结构化数据抽取",en:"Scenario: Structured Data Extraction"},
+stem:{zh:"抽取输出偶尔缺字段。当前重试逻辑：校验失败就重发原任务并附一句「格式错误，请重试」。命中率没改善。缺了什么？",en:"Extractions occasionally miss fields. Current retry: on validation failure, resend the task with 'format error, retry'. No improvement. What's missing?"},
+opts:[
+{zh:"重试次数不够，改成 20 次",en:"Not enough retries — make it 20"},
+{zh:"回喂必须包含原输出 + 具体校验错误（缺哪个字段/什么类型错）",en:"Feedback must include the original output + the specific validation errors (which field, which type)"},
+{zh:"每次重试换一个模型",en:"Rotate models per retry"},
+{zh:"放弃校验直接入库",en:"Drop validation and store as-is"}],
+correct:1,
+exp:{zh:"自我纠正的关键是可行动的错误信息:模型知道错在哪才能精准修复。盲目重试只是掷骰子。",en:"Self-correction hinges on actionable error detail: the model can only fix what it can see. Blind retries are dice rolls."}},
+
+{d:"d4",scen:{zh:"场景：客服解决智能体",en:"Scenario: Customer Support Resolution Agent"},
+stem:{zh:"客服提示词规则写「退款问题必须转人工」，但 few-shot 示例里有一条 AI 直接处理退款的对话。上线后模型频繁直接处理退款。原因？",en:"The rules say 'refund issues must escalate to a human', but one few-shot example shows the AI handling a refund directly. In production the model keeps handling refunds itself. Why?"},
+opts:[
+{zh:"模型故意违抗",en:"The model is being defiant"},
+{zh:"示例与规则冲突时，模型往往跟随示例——示例必须与规则一致",en:"When examples conflict with rules, models tend to follow the examples — they must agree"},
+{zh:"退款这个词有歧义",en:"'Refund' is ambiguous"},
+{zh:"温度太低",en:"Temperature too low"}],
+correct:1,
+exp:{zh:"few-shot 的隐形力量大于想象：示例演示的行为会被模仿。审查示例与规则的一致性是提示工程的例行检查项。",en:"Few-shot is more powerful than it looks: demonstrated behavior gets imitated. Auditing example-rule consistency is a routine prompt-engineering check."}},
+
+{d:"d4",scen:{zh:"场景：结构化数据抽取",en:"Scenario: Structured Data Extraction"},
+stem:{zh:"发票抽取中，部分发票根本没有 PO 号码，但 schema 把 po_number 设为必填字符串。结果模型开始编造 PO 号。修复？",en:"Some invoices genuinely have no PO number, but the schema makes po_number a required string. The model starts inventing PO numbers. Fix?"},
+opts:[
+{zh:"提示里加一句「不要编造」就够",en:"Just add 'don't invent' to the prompt"},
+{zh:"schema 给 null/缺失出口，并在提示中明确「没有就填 null」",en:"Give the schema a null/absent escape hatch and state 'use null when absent'"},
+{zh:"删掉这个字段",en:"Delete the field"},
+{zh:"让人工先补齐所有 PO 号",en:"Have humans pre-fill every PO number"}],
+correct:1,
+exp:{zh:"必填约束 + 现实缺失 = 强迫编造。给模型合法的「不知道」出口（null/unknown）是抽取设计的固定考点。「不要编造」的软约束挡不住结构性强迫。",en:"Required constraint + genuinely absent data = forced invention. A legal 'unknown' exit (null) is a fixed extraction-design point; a soft 'don't invent' can't beat structural coercion."}},
+
+{d:"d4",scen:{zh:"场景：客服解决智能体",en:"Scenario: Customer Support Resolution Agent"},
+stem:{zh:"用户消息将与系统指令一起进入提示。为降低提示注入风险，最基础的一步是？",en:"User messages enter the prompt alongside system instructions. The most fundamental step against prompt injection?"},
+opts:[
+{zh:"把用户输入用明确标签（如 <user_input>）包裹，与指令区隔离",en:"Wrap user input in explicit tags (e.g. <user_input>), separated from the instruction zone"},
+{zh:"禁止用户发消息",en:"Ban user messages"},
+{zh:"把所有指令改成大写",en:"Uppercase all instructions"},
+{zh:"提高 max_tokens",en:"Raise max_tokens"}],
+correct:0,
+exp:{zh:"指令与数据的结构性隔离（XML 标签）是第一道墙：模型被明确告知标签内是数据不是指令。",en:"Structural separation of instructions and data (XML tags) is the first wall: the model is told explicitly that tag contents are data, not directives."}},
+
+/* ---- D5 ---- */
+{d:"d5",scen:{zh:"场景：客服解决智能体",en:"Scenario: Customer Support Resolution Agent"},
+stem:{zh:"客服系统每次请求都带同一份 8,000 token 的政策手册 + 工具定义。已启用 prompt caching 但命中率为 0。检查发现系统提示开头嵌了「当前时间：{timestamp}」。问题与修复？",en:"Every request carries the same 8,000-token policy manual + tool definitions. Prompt caching is on but the hit rate is 0. You find 'current time: {timestamp}' embedded at the top of the system prompt. Problem & fix?"},
+opts:[
+{zh:"缓存服务坏了，提工单",en:"The cache service is broken — file a ticket"},
+{zh:"前缀每次都变导致永不命中：把动态时间戳移出稳定前缀（放末尾或消息里）",en:"The prefix changes every call so it never hits: move the dynamic timestamp out of the stable prefix (to the end or into messages)"},
+{zh:"手册太长，删掉一半",en:"The manual is too long — delete half"},
+{zh:"缓存只对小提示生效",en:"Caching only works on small prompts"}],
+correct:1,
+exp:{zh:"缓存按前缀逐字匹配：稳定内容在前、可变内容在后。前缀里一个变动字符 = 全部失效。这是 D5 最高频考题原型。",en:"Caching matches the prefix verbatim: stable first, variable last. One changing character in the prefix = total bust. This is D5's most-recycled question archetype."}},
+
+{d:"d5",scen:{zh:"场景：结构化数据抽取",en:"Scenario: Structured Data Extraction"},
+stem:{zh:"两个任务：① 夜间批量抽取 20 万条历史工单（明早要结果）② 在线客户等待的实时回复。API 选型？",en:"Two jobs: ① overnight extraction of 200k historical tickets (results due tomorrow morning) ② real-time replies to a waiting customer. API choices?"},
+opts:[
+{zh:"两个都用 Batch API 省钱",en:"Batch API for both — savings!"},
+{zh:"① Batch API（省约50%，24小时窗口足够）② 标准实时 API",en:"① Batch API (≈50% off; the 24-hour window fits) ② the standard real-time API"},
+{zh:"两个都用实时 API 求快",en:"Real-time for both — speed!"},
+{zh:"① 实时 ② Batch",en:"① real-time ② Batch"}],
+correct:1,
+exp:{zh:"Batch = 异步 + 最长24小时 + 约五折,专为不赶时间的批量任务而生；在线等待的场景绝不能配 Batch。",en:"Batch = async + up-to-24h + ~half price, built for non-urgent bulk; never pair it with someone waiting online."}},
+
+{d:"d5",scen:{zh:"场景：多智能体研究系统",en:"Scenario: Multi-Agent Research System"},
+stem:{zh:"研究 agent A 完成资料收集后要移交给写作 agent B。最佳交接方式？",en:"Research agent A finishes gathering and hands off to writing agent B. Best handoff?"},
+opts:[
+{zh:"把 A 的全部对话记录原样塞给 B",en:"Dump A's entire transcript into B"},
+{zh:"传结构化状态：目标、关键发现、来源清单、未决问题、约束",en:"Pass structured state: goal, key findings, source list, open questions, constraints"},
+{zh:"B 从零重新研究一遍",en:"B redoes the research from scratch"},
+{zh:"口头转述大意",en:"A vibes-level verbal summary"}],
+correct:1,
+exp:{zh:"交接传结构化状态摘要而非转储:控制 token、防中间迷失、信息密度高。这也呼应 D1 的结论式汇报纪律。",en:"Handoffs pass structured state, not dumps: token control, no lost-in-the-middle, high signal density. It echoes D1's conclusion-style reporting discipline."}},
+
+{d:"d5",scen:{zh:"场景：客服解决智能体",en:"Scenario: Customer Support Resolution Agent"},
+stem:{zh:"客服 agent 对一个涉及大额赔偿的复杂投诉给出了回复，但自评置信度很低。系统应该？",en:"The support agent drafts a reply to a complex complaint involving major compensation, but self-rates its confidence as low. The system should?"},
+opts:[
+{zh:"照发不误，保持全自动",en:"Send anyway — stay fully automated"},
+{zh:"低置信 + 高风险 → 升级人工处理，并附上草稿与上下文",en:"Low confidence + high stakes → escalate to a human, attaching the draft and context"},
+{zh:"重试到置信度变高为止",en:"Retry until confidence rises"},
+{zh:"降低置信度阈值",en:"Lower the confidence threshold"}],
+correct:1,
+exp:{zh:"低置信/高风险的组合是升级人工的铁律信号。「全自动处理一切」在本考试几乎总是错误选项。",en:"Low confidence + high stakes is the iron signal for human escalation. 'Fully automate everything' is almost always the wrong option on this exam."}}
+);
+
+/* ================= SCENARIOS & PLAN DATA ================= */
+
+const SCENARIOS = {
+zh:[
+["客服解决智能体","一个能查订单、按政策处理请求的客服系统。考点集中：路由 vs Agent 选型、退款等高危动作的人工门、政策合规、升级机制。"],
+["Claude Code 代码生成","用 Claude Code 做开发。考点：CLAUDE.md 层级、权限、Plan Mode、subagent 复查、Git 工作流。"],
+["多智能体研究系统","开放式研究课题的 O-W 架构。考点：动态任务拆解、上下文隔离、token 经济、交接。"],
+["开发者生产力","团队级 Claude 工作流。考点：Skills、Hooks 强制、受管策略、斜杠命令分发。"],
+["Claude Code 用于 CI/CD","流水线里的非交互 AI。考点：-p 无头模式、结构化输出、失败处理、自动审查。"],
+["结构化数据抽取","批量文档→JSON。考点：工具式抽取、schema 设计、校验重试循环、Batch API、缓存。"]
+],
+en:[
+["Customer Support Resolution Agent","A support system that queries orders and acts per policy. Hotspots: routing vs agent selection, human gates on refunds, policy compliance, escalation."],
+["Code Generation with Claude Code","Developing with Claude Code. Hotspots: CLAUDE.md hierarchy, permissions, Plan Mode, subagent review, Git workflow."],
+["Multi-Agent Research System","O-W architecture for open research briefs. Hotspots: dynamic decomposition, context isolation, token economics, handoffs."],
+["Developer Productivity with Claude","Team-level Claude workflows. Hotspots: Skills, hook enforcement, managed policy, slash-command distribution."],
+["Claude Code for CI/CD","Non-interactive AI in pipelines. Hotspots: headless -p, structured output, failure handling, auto-review."],
+["Structured Data Extraction","Bulk documents → JSON. Hotspots: tool-based extraction, schema design, validation-retry loops, Batch API, caching."]
+]};
+
+const PLAN = {
+zh:[
+["第 1 周 · 打地基","D1 + D2 精读各两遍，做完两域全部实战题；同步开始刷 Anthropic Academy 旗舰课《Building with the Claude API》（每天 1 小时，一周刷完 8 小时）。你已有的 n8n Agent 和 Claude Code 实战经验会让这一周非常顺。"],
+["第 2 周 · 补细节","D3 + D4 + D5 精读；D3 的层级/退出码、D5 的缓存规则用卡片背下来。做完三域实战题。动手补一个真实练习：给你的项目配一个退出码 2 的 PreToolUse 拦截钩子 + 一次工具式抽取。"],
+["第 3 周 · 全真演练","隔天一次本站模拟考，错题回域重读；稳定 85%+ 后做官方模拟考。官方模拟考 850+ → 约真考。考前一晚只看各域「高频陷阱」清单，不学新内容。"]
+],
+en:[
+["Week 1 · Foundations","Read D1 + D2 twice each and finish both domains' drills; in parallel start the Anthropic Academy flagship 'Building with the Claude API' (1 hr/day clears its ~8 hours in a week). Your existing n8n agent and Claude Code experience makes this week smooth."],
+["Week 2 · Details","Read D3 + D4 + D5; flashcard D3's hierarchy/exit codes and D5's caching rules. Finish all three domains' drills. One hands-on drill: add an exit-code-2 PreToolUse guard hook to a real project + one tool-based extraction."],
+["Week 3 · Dress rehearsal","Mock exam here every other day; re-read domains behind every miss. At a stable 85%+, take the official practice exam. Score 850+ there → book the real thing. The night before, review only each domain's trap lists — nothing new."]
+]};
+
+/* ================= APP LOGIC ================= */
+
+let LANG="zh", mastered={}, memoryOnly=false;
+let mock=null; // {qs:[], answers:[], idx, deadline, timerId}
+
+async function loadState(){
+  try{
+    if(window.storage){
+      const p=await window.storage.get("ccaf-mastered").catch(()=>null);
+      if(p&&p.value) mastered=JSON.parse(p.value);
+      const l=await window.storage.get("ccaf-lang").catch(()=>null);
+      if(l&&l.value) LANG=l.value;
+    } else memoryOnly=true;
+  }catch(e){ memoryOnly=true; }
+}
+async function save(k,v){ if(memoryOnly) return; try{ await window.storage.set(k,v); }catch(e){} }
+function t(k){ return I18N[LANG][k]; }
+
+/* ---------- Sidebar ---------- */
+function buildSidebar(){
+  const nav=document.getElementById("snav");
+  let h='<li id="sn-home"><a href="#home"><span class="tag t-x">★</span>'+t("nav_home")+'</a></li>';
+  h+='<li class="snav-sec">'+t("domains_sec")+'</li>';
+  DOMAINS.forEach(d=>{
+    h+='<li id="sn-'+d.id+'"><a href="#'+d.id+'"><span class="tag t-'+d.id+'">'+d.id.toUpperCase()+'</span>'+
+       '<span>'+d.title[LANG].split("·")[1].trim()+(mastered[d.id]?' <span style="color:var(--green)">✔</span>':'')+'</span>'+
+       '<span class="w">'+d.weight+'%</span></a></li>';
+  });
+  h+='<li class="snav-sec">'+t("tools_sec")+'</li>';
+  h+='<li id="sn-scen"><a href="#scen"><span class="tag t-x">6</span>'+t("nav_scen")+'</a></li>';
+  h+='<li id="sn-plan"><a href="#plan"><span class="tag t-x">21</span>'+t("nav_plan")+'</a></li>';
+  h+='<li id="sn-mock"><a href="#mock"><span class="tag t-x">🎯</span>'+t("nav_mock")+'</a></li>';
+  nav.innerHTML=h;
+}
+
+/* ---------- Quiz block renderer (shared) ---------- */
+function quizHTML(qs,prefix){
+  let h='';
+  qs.forEach((q,qi)=>{
+    h+='<div class="qcard"><div class="scen">'+q.scen[LANG]+'</div><div class="stem">'+(qi+1)+'. '+q.stem[LANG]+'</div>';
+    q.opts.forEach((op,oi)=>{
+      h+='<button class="qopt" data-p="'+prefix+'" data-q="'+qi+'" data-o="'+oi+'">'+String.fromCharCode(65+oi)+'. '+op[LANG]+'</button>';
+    });
+    h+='<div class="qexp" id="'+prefix+'-exp-'+qi+'"></div></div>';
+  });
+  return h;
+}
+function bindQuiz(qs,prefix,root){
+  root.querySelectorAll('.qopt[data-p="'+prefix+'"]').forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      const qi=+btn.dataset.q, oi=+btn.dataset.o, q=qs[qi];
+      const group=root.querySelectorAll('.qopt[data-p="'+prefix+'"][data-q="'+qi+'"]');
+      group.forEach(b=>b.classList.remove("correct","wrong"));
+      const exp=document.getElementById(prefix+"-exp-"+qi);
+      if(oi===q.correct){ btn.classList.add("correct"); exp.innerHTML="<b>"+t("correct")+"</b> "+q.exp[LANG]; }
+      else { btn.classList.add("wrong"); group[q.correct].classList.add("correct"); exp.innerHTML="<b>"+t("wrong")+"</b> "+q.exp[LANG]; }
+      exp.classList.add("show");
+    });
+  });
+}
+
+/* ---------- Home ---------- */
+function renderHome(){
+  stopTimer();
+  const main=document.getElementById("main");
+  let h='<div class="hero"><h1 class="serif">'+t("hero_t")+'</h1><p>'+t("hero_p")+'</p>'+
+    '<div class="facts">'+
+    '<div class="fact"><div class="v">60</div><div class="k">'+t("f_q")+'</div></div>'+
+    '<div class="fact"><div class="v">120</div><div class="k">'+t("f_min")+'</div></div>'+
+    '<div class="fact"><div class="v">720</div><div class="k">'+t("f_pass")+'</div></div>'+
+    '<div class="fact"><div class="v">US$99</div><div class="k">'+t("f_fee")+'</div></div>'+
+    '</div></div>';
+  h+='<div class="spectrum">';
+  DOMAINS.forEach(d=>{ h+='<a href="#'+d.id+'" style="width:'+d.weight+'%;background:'+d.color+'">'+d.id.toUpperCase()+' '+d.weight+'%</a>'; });
+  h+='</div><div class="spec-label">'+t("spectrum_l")+'</div>';
+  h+='<div class="card"><h2>'+t("reg_t")+'</h2><ol class="steps">'+
+     I18N[LANG].reg_steps.map(s=>'<li>'+s+'</li>').join("")+'</ol></div>';
+  main.innerHTML=h;
+  window.scrollTo(0,0);
+  markNav("sn-home");
+}
+
+/* ---------- Domain page ---------- */
+function renderDomain(d){
+  stopTimer();
+  const main=document.getElementById("main");
+  const qs=QBANK.filter(q=>q.d===d.id);
+  let h='<div class="crumb"><a href="#home" style="color:inherit">'+t("nav_home")+'</a> / '+d.id.toUpperCase()+'</div>';
+  h+='<span class="dband" style="background:'+d.color+'">'+d.id.toUpperCase()+' · '+d.weight+'% · '+d.minutes+' '+t("min_read")+'</span>';
+  h+='<h1 class="ltitle">'+d.title[LANG]+'</h1>';
+  h+='<div class="card" style="border-left:5px solid '+d.color+'"><h2 style="font-size:15px">'+t("obj_t")+'</h2><ul style="padding-left:20px;font-size:14px">'+
+     d.tests[LANG].map(x=>'<li>'+x+'</li>').join("")+'</ul></div>';
+  h+='<div class="lesson-body">'+d.body[LANG]+'</div>';
+  h+='<h3 class="serif" style="font-size:18px;margin:26px 0 8px">'+t("traps_t")+'</h3>';
+  d.traps[LANG].forEach(tr=>{ h+='<div class="trap"><b>✕</b> '+tr+'</div>'; });
+  h+='<h3 class="serif" style="font-size:18px;margin:28px 0 4px">'+t("quiz_t")+'</h3>';
+  h+=quizHTML(qs,d.id);
+  const isD=!!mastered[d.id];
+  h+='<div class="lfoot"><button class="btn done-btn '+(isD?"":"undone")+'" id="btnM">'+(isD?t("marked"):t("mark_done"))+'</button>';
+  const idx=DOMAINS.indexOf(d);
+  if(idx<DOMAINS.length-1) h+='<a class="btn ink" href="#'+DOMAINS[idx+1].id+'">'+DOMAINS[idx+1].id.toUpperCase()+' →</a>';
+  else h+='<a class="btn ink" href="#mock">'+t("nav_mock")+' →</a>';
+  h+='</div>';
+  main.innerHTML=h;
+  window.scrollTo(0,0);
+  bindQuiz(qs,d.id,main);
+  document.getElementById("btnM").addEventListener("click",async()=>{
+    mastered[d.id]=!mastered[d.id]; if(!mastered[d.id]) delete mastered[d.id];
+    await save("ccaf-mastered",JSON.stringify(mastered));
+    buildSidebar(); renderDomain(d);
+  });
+  markNav("sn-"+d.id);
+}
+
+/* ---------- Scenarios & Plan ---------- */
+function renderScen(){
+  stopTimer();
+  const main=document.getElementById("main");
+  let h='<h1 class="ltitle serif">'+t("nav_scen")+'</h1><p style="font-size:14.5px;color:var(--muted);margin-bottom:16px">'+
+    (LANG==="zh"?"考试内置 6 个生产场景，每次随机抽 4 个，所有题目都锚定在场景里。提前熟悉每个场景的「考点热区」，考场上读题速度会快一倍。":"The exam ships 6 production scenarios; each sitting randomly selects 4, and every question is anchored to them. Knowing each scenario's hotspots doubles your reading speed on exam day.")+'</p>';
+  SCENARIOS[LANG].forEach((s,i)=>{
+    h+='<div class="card"><h2 style="font-size:16px">'+(i+1)+'. '+s[0]+'</h2><p style="margin:0;font-size:14px">'+s[1]+'</p></div>';
+  });
+  main.innerHTML=h; window.scrollTo(0,0); markNav("sn-scen");
+}
+function renderPlan(){
+  stopTimer();
+  const main=document.getElementById("main");
+  let h='<h1 class="ltitle serif">'+t("plan_t")+'</h1>';
+  PLAN[LANG].forEach(w=>{
+    h+='<div class="card"><h2 style="font-size:16px">'+w[0]+'</h2><p style="margin:0;font-size:14.5px">'+w[1]+'</p></div>';
+  });
+  main.innerHTML=h; window.scrollTo(0,0); markNav("sn-plan");
+}
+
+/* ---------- Mock exam ---------- */
+function pickMock(){
+  // weighted draw: total 20 → d1:6 d2:3 d3:4 d4:4 d5:3
+  const want={d1:6,d2:3,d3:4,d4:4,d5:3};
+  const qs=[];
+  Object.keys(want).forEach(did=>{
+    const pool=QBANK.filter(q=>q.d===did).slice();
+    for(let i=pool.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [pool[i],pool[j]]=[pool[j],pool[i]]; }
+    qs.push(...pool.slice(0,Math.min(want[did],pool.length)));
+  });
+  for(let i=qs.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [qs[i],qs[j]]=[qs[j],qs[i]]; }
+  return qs;
+}
+function stopTimer(){ if(mock&&mock.timerId){ clearInterval(mock.timerId); mock.timerId=null; } }
+function fmtTime(ms){
+  const s=Math.max(0,Math.floor(ms/1000));
+  return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
+}
+function renderMockIntro(){
+  stopTimer(); mock=null;
+  const main=document.getElementById("main");
+  main.innerHTML='<h1 class="ltitle serif">'+t("mock_t")+'</h1>'+
+    '<div class="card"><p>'+t("mock_intro")+'</p>'+
+    '<button class="btn gold" id="btnStart">'+t("mock_start")+'</button></div>';
+  document.getElementById("btnStart").addEventListener("click",startMock);
+  window.scrollTo(0,0); markNav("sn-mock");
+}
+function startMock(){
+  mock={qs:pickMock(),answers:{},idx:0,deadline:Date.now()+40*60*1000,timerId:null};
+  renderMockQ();
+  mock.timerId=setInterval(()=>{
+    const el=document.getElementById("timer");
+    if(!el){ return; }
+    const left=mock.deadline-Date.now();
+    el.textContent=fmtTime(left);
+    if(left<5*60*1000) el.classList.add("low");
+    if(left<=0){ finishMock(); }
+  },1000);
+}
+function renderMockQ(){
+  const main=document.getElementById("main");
+  const q=mock.qs[mock.idx], n=mock.qs.length;
+  let h='<div class="mock-set"><div class="mock-top">'+
+    '<div class="timer" id="timer">'+fmtTime(mock.deadline-Date.now())+'</div>'+
+    '<div class="mock-progress">'+t("mock_q")+' '+(mock.idx+1)+' / '+n+' · '+t("time_left")+'</div>'+
+    '<div style="flex:1"></div>'+
+    '<button class="btn ghost" id="btnSubmit">'+t("mock_submit")+'</button></div>';
+  h+='<div class="scen" style="font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-bottom:6px">'+q.scen[LANG]+' · '+q.d.toUpperCase()+'</div>';
+  h+='<div class="stem" style="font-weight:700;font-size:15px;margin-bottom:12px;line-height:1.65">'+q.stem[LANG]+'</div>';
+  q.opts.forEach((op,oi)=>{
+    const sel=mock.answers[mock.idx]===oi;
+    h+='<button class="qopt" style="'+(sel?"border-color:var(--gold);background:var(--gold-soft);font-weight:700;":"")+'" data-o="'+oi+'">'+String.fromCharCode(65+oi)+'. '+op[LANG]+'</button>';
+  });
+  h+='<div class="lfoot">';
+  if(mock.idx>0) h+='<button class="btn ghost" id="btnPrev">'+t("mock_prev")+'</button>';
+  if(mock.idx<n-1) h+='<button class="btn ink" id="btnNext">'+t("mock_next")+'</button>';
+  else h+='<button class="btn gold" id="btnSubmit2">'+t("mock_submit")+'</button>';
+  h+='</div></div>';
+  main.innerHTML=h;
+  main.querySelectorAll(".qopt").forEach(b=>b.addEventListener("click",()=>{
+    mock.answers[mock.idx]=+b.dataset.o; renderMockQ();
+  }));
+  const nx=document.getElementById("btnNext"); if(nx) nx.addEventListener("click",()=>{mock.idx++;renderMockQ();window.scrollTo(0,0);});
+  const pv=document.getElementById("btnPrev"); if(pv) pv.addEventListener("click",()=>{mock.idx--;renderMockQ();window.scrollTo(0,0);});
+  const s1=document.getElementById("btnSubmit"); if(s1) s1.addEventListener("click",trySubmit);
+  const s2=document.getElementById("btnSubmit2"); if(s2) s2.addEventListener("click",trySubmit);
+}
+function trySubmit(){
+  const unanswered=mock.qs.some((_,i)=>mock.answers[i]===undefined);
+  if(unanswered && !confirm(t("mock_unanswered"))) return;
+  finishMock();
+}
+function finishMock(){
+  stopTimer();
+  const n=mock.qs.length;
+  let correct=0; const byD={};
+  mock.qs.forEach((q,i)=>{
+    byD[q.d]=byD[q.d]||{c:0,t:0}; byD[q.d].t++;
+    if(mock.answers[i]===q.correct){ correct++; byD[q.d].c++; }
+  });
+  const score=Math.round(correct/n*1000);
+  const pass=score>=720;
+  const main=document.getElementById("main");
+  // gauge: semicircle arc
+  const pct=score/1000;
+  const ang=Math.PI*(1-pct);
+  const x=115+95*Math.cos(ang), y=115-95*Math.sin(ang);
+  const large=pct>0.5?1:0;
+  // pass mark at 720
+  const pa=Math.PI*(1-0.72), px1=115+85*Math.cos(pa), py1=115-85*Math.sin(pa), px2=115+105*Math.cos(pa), py2=115-105*Math.sin(pa);
+  let h='<h1 class="ltitle serif">'+t("mock_t")+'</h1><div class="card"><div class="gauge-wrap"><div class="gauge">'+
+    '<svg viewBox="0 0 230 125"><path d="M 20 115 A 95 95 0 0 1 210 115" fill="none" stroke="#EDE8D9" stroke-width="16" stroke-linecap="round"/>'+
+    '<path d="M 20 115 A 95 95 0 '+large+' 1 '+x.toFixed(1)+' '+y.toFixed(1)+'" fill="none" stroke="'+(pass?"var(--green)":"var(--red)")+'" stroke-width="16" stroke-linecap="round"/>'+
+    '<line x1="'+px1.toFixed(1)+'" y1="'+py1.toFixed(1)+'" x2="'+px2.toFixed(1)+'" y2="'+py2.toFixed(1)+'" stroke="var(--ink)" stroke-width="3"/>'+
+    '<text x="'+px2.toFixed(1)+'" y="'+(py2-6).toFixed(1)+'" font-size="11" text-anchor="middle" fill="var(--muted)">720</text></svg>'+
+    '<div class="score">'+score+'<small> /1000</small></div></div>'+
+    '<div class="verdict '+(pass?"pass":"fail")+'">'+(pass?t("pass_v"):t("fail_v"))+'</div>'+
+    '<p style="font-size:14px;max-width:520px;margin:6px auto 0">'+(pass?t("pass_msg"):t("fail_msg"))+'</p>'+
+    '<p style="font-size:13px;color:var(--muted);margin-top:8px">'+correct+' / '+n+'</p></div>';
+  h+='<div class="dbreak"><h3 class="serif" style="font-size:16px;margin-bottom:10px">'+t("d_diag")+'</h3>';
+  DOMAINS.forEach(d=>{
+    const r=byD[d.id]||{c:0,t:0}; const p=r.t?Math.round(r.c/r.t*100):0;
+    h+='<div class="row"><div class="nm">'+d.title[LANG]+'</div><div class="bar"><i style="width:'+p+'%;background:'+d.color+'"></i></div><div class="pc">'+r.c+'/'+r.t+'</div></div>';
+  });
+  h+='</div><div class="lfoot"><button class="btn gold" id="btnRetry">'+t("retry")+'</button><a class="btn ghost" href="#home">'+t("back_home")+'</a></div></div>';
+  h+='<h3 class="serif" style="font-size:18px;margin:26px 0 4px">'+t("review_t")+'</h3>';
+  mock.qs.forEach((q,i)=>{
+    const ua=mock.answers[i], ok=ua===q.correct;
+    h+='<div class="qcard"><div class="scen">'+q.scen[LANG]+' · '+q.d.toUpperCase()+'</div>'+
+      '<div class="stem">'+(i+1)+'. '+q.stem[LANG]+'</div>'+
+      '<div style="font-size:13.5px;margin-bottom:6px">'+t("your_ans")+'：<b style="color:'+(ok?"var(--green)":"var(--red)")+'">'+
+      (ua===undefined?t("not_answered"):String.fromCharCode(65+ua)+". "+q.opts[ua][LANG])+'</b></div>'+
+      (ok?'':'<div style="font-size:13.5px;margin-bottom:6px">'+t("right_ans")+'：<b style="color:var(--green)">'+String.fromCharCode(65+q.correct)+". "+q.opts[q.correct][LANG]+'</b></div>')+
+      '<div class="qexp show">'+q.exp[LANG]+'</div></div>';
+  });
+  main.innerHTML=h;
+  window.scrollTo(0,0);
+  document.getElementById("btnRetry").addEventListener("click",startMock);
+}
+
+/* ---------- Router ---------- */
+function markNav(id){
+  document.querySelectorAll(".snav li").forEach(li=>li.classList.remove("active"));
+  const el=document.getElementById(id); if(el) el.classList.add("active");
+}
+function route(){
+  const hash=(location.hash||"#home").slice(1);
+  buildSidebar();
+  const d=DOMAINS.find(x=>x.id===hash);
+  if(d) renderDomain(d);
+  else if(hash==="scen") renderScen();
+  else if(hash==="plan") renderPlan();
+  else if(hash==="mock") renderMockIntro();
+  else renderHome();
+  document.getElementById("sidebar").classList.remove("open");
+}
+function setLang(l){
+  LANG=l;
+  document.documentElement.lang=(l==="zh"?"zh":"en");
+  document.getElementById("btnZh").classList.toggle("on",l==="zh");
+  document.getElementById("btnEn").classList.toggle("on",l==="en");
+  save("ccaf-lang",l);
+  if(mock && mock.timerId){ renderMockQ(); buildSidebar(); return; } // keep exam running on lang switch
+  route();
+}
+(async function init(){
+  await loadState();
+  document.getElementById("btnZh").addEventListener("click",()=>setLang("zh"));
+  document.getElementById("btnEn").addEventListener("click",()=>setLang("en"));
+  document.getElementById("menuBtn").addEventListener("click",()=>document.getElementById("sidebar").classList.toggle("open"));
+  window.addEventListener("hashchange",route);
+  setLang(LANG);
+})();
+</script>
+</body>
+</html>
