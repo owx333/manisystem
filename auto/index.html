@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
-<title>AWARA · Loan Eligibility</title>
+<title>Mani Auto · Loan Eligibility</title>
  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23F97316' d='M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94 0 .31.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,7 +11,7 @@
 <style>
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   :root{
-    /* ===== AWARA — LIGHT THEME WITH VIBRANT ACCENTS ===== */
+    /* ===== MANI AUTO — LIGHT THEME WITH VIBRANT ACCENTS ===== */
     /* Light backgrounds with subtle blue tint */
     --bg:#f1f6fc;             /* PAGE — very pale blue */
     --bg-2:#ffffff;            /* CARDS — pure white */
@@ -97,7 +97,7 @@
   .gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:100;padding:1.5rem}
   .gate-inner{max-width:380px;width:100%;text-align:center;position:relative;z-index:1}
   .gate-mark{display:inline-flex;align-items:center;justify-content:center;width:64px;height:64px;border:1.5px solid var(--gold);border-radius:50%;margin-bottom:1.5rem;font-family:var(--sans);font-weight:900;font-size:1.65rem;color:var(--gold);background:rgba(240,196,25,.05)}
-  .gate-brand{font-family:var(--sans);font-weight:900;font-size:2.6rem;color:var(--gold);line-height:1;letter-spacing:.04em;text-transform:uppercase}
+  .gate-brand{font-family:var(--sans);font-weight:900;font-size:clamp(1.8rem,9vw,2.4rem);color:var(--gold);line-height:1;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
   .gate-sub{font-size:.7rem;color:var(--txt-3);letter-spacing:.25em;text-transform:uppercase;margin-top:.75rem;margin-bottom:2.75rem}
   .gate-input{width:100%;padding:1rem 1.25rem;background:var(--bg-3);border:1px solid var(--line);color:var(--txt);font-family:var(--mono);font-size:1.05rem;letter-spacing:.4em;text-align:center;border-radius:6px;outline:none;transition:border-color .2s}
   .gate-input::placeholder{color:var(--txt-3);letter-spacing:.4em}
@@ -117,7 +117,7 @@
   .head > *{position:relative;z-index:1}
   .brand-wrap{display:flex;align-items:center;gap:.875rem}
   .brand-mark{width:42px;height:42px;border:1.5px solid #F0C419;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--sans);font-weight:900;font-size:1.25rem;color:#F0C419;background:rgba(240,196,25,.1)}
-  .brand{font-family:var(--sans);font-weight:900;font-size:1.9rem;color:#F0C419;line-height:1;letter-spacing:.04em;text-transform:uppercase;text-shadow:0 2px 8px rgba(0,0,0,.3)}
+  .brand{font-family:var(--sans);font-weight:900;font-size:clamp(1.3rem,4.5vw,1.9rem);color:#F0C419;line-height:1;letter-spacing:.04em;text-transform:uppercase;text-shadow:0 2px 8px rgba(0,0,0,.3);white-space:nowrap}
   .tagline{font-size:.7rem;color:var(--txt-light-2);letter-spacing:.22em;text-transform:uppercase;margin-top:.4rem}
   .head-right{text-align:right;font-family:var(--mono);font-size:.68rem;color:var(--txt-light-3);letter-spacing:.1em}
   .head-right .v{margin-top:.4rem;color:#F0C419;opacity:1;background:rgba(240,196,25,.15);padding:.25rem .6rem;border-radius:4px;border:1px solid rgba(240,196,25,.4);display:inline-block;font-weight:700}
@@ -589,10 +589,10 @@
     92%{opacity:1}93%{opacity:.3}94%{opacity:1}97%{opacity:.6}98%{opacity:1}
   }
 
-  /* Main AWARA brand on gate */
+  /* Main Mani Auto brand on gate */
   .gate-brand{
     font-family:'Geist','Helvetica Neue',sans-serif;
-    font-weight:900;font-size:3.5rem;line-height:1;
+    font-weight:900;font-size:clamp(2rem,10vw,2.9rem);line-height:1;white-space:nowrap;
     letter-spacing:.08em;text-transform:uppercase;
     background:linear-gradient(135deg,#ffd60a,#ff9f0a,#ff2d55,#bf5af2,#0a84ff,#30d158,#ffd60a);
     background-size:300% 300%;
@@ -1025,7 +1025,7 @@
       <span class="hk-char"></span><span class="hk-char"></span><span class="hk-char"></span>
       <span class="hk-char"></span><span class="hk-char"></span><span class="hk-char"></span>
     </div>
-    <div class="gate-brand">AWARA</div>
+    <div class="gate-brand">MANI AUTO</div>
     <div class="gate-sub">Loan Eligibility · Restricted Access</div>
     <div class="gate-card">
       <input type="password" class="gate-input" id="gateInput" placeholder="••••" maxlength="20" autocomplete="off" inputmode="numeric">
@@ -1049,9 +1049,9 @@
   <header class="head">
     <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--neon-r),var(--neon-o),var(--neon-y),var(--neon-g),var(--neon-b),var(--neon-p),var(--neon-r));background-size:200% 100%;animation:rainbowShift 3s linear infinite;opacity:.8"></div>
     <div class="brand-wrap">
-      <div class="brand-mark" style="background:linear-gradient(135deg,rgba(255,214,10,.2),rgba(255,159,10,.1));border-color:var(--neon-y)">A</div>
+      <div class="brand-mark" style="background:linear-gradient(135deg,rgba(255,214,10,.2),rgba(255,159,10,.1));border-color:var(--neon-y)">M</div>
       <div>
-        <div class="brand">AWARA</div>
+        <div class="brand">MANI AUTO</div>
         <div class="tagline">Loan Eligibility · Created by Wilson</div>
         <div class="header-bulbs">
           <span class="hb hb-r"></span>
@@ -1067,7 +1067,7 @@
     </div>
     <div class="head-right">
       <div id="dt"></div>
-      <div class="v">v2.9 · AWARA</div>
+      <div class="v">v2.9 · Mani Auto</div>
         <div class="sync-status syncing" id="syncStatus"><span class="dot"></span>Loading...</div>
     </div>
   </header>
@@ -1539,7 +1539,7 @@
   </div>
 
   <div class="foot">
-    <div><em>AWARA</em> · Loan Eligibility Engine · v1.4 · <em>created by Wilson</em></div>
+    <div><em>Mani Auto</em> · Loan Eligibility Engine · v1.4 · <em>created by Wilson</em></div>
     <div style="margin-top:.3rem;opacity:.7">Allowance list 05.05.2026 · GLC + Angkasa Code + Loan Package listing · Subject to employer confirmation</div>
   </div>
 </div>
